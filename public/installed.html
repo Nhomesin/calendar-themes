@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CalTheme — Installed</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 3rem;
+      max-width: 440px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 1px 3px rgba(0,0,0,.08), 0 8px 24px rgba(0,0,0,.06);
+    }
+    .icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #EAF3DE;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 1.5rem;
+    }
+    .icon svg { width: 28px; height: 28px; }
+    h1 { font-size: 1.4rem; font-weight: 600; color: #1a1a1a; margin-bottom: .75rem; }
+    p { font-size: .95rem; color: #555; line-height: 1.6; margin-bottom: 1.5rem; }
+    .next {
+      display: inline-block;
+      background: #6C63FF;
+      color: #fff;
+      padding: .75rem 1.75rem;
+      border-radius: 8px;
+      text-decoration: none;
+      font-size: .9rem;
+      font-weight: 500;
+    }
+    .next:hover { background: #574fd6; }
+    .sub { font-size: .8rem; color: #999; margin-top: 1.25rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#3B6D11" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+    <h1>CalTheme is installed</h1>
+    <p>Your calendar theming app is ready. Head back into your GHL subaccount — you'll find <strong>Calendar Themes</strong> in the left sidebar.</p>
+    <a href="#" class="next" id="open-ghl">Go to theme builder</a>
+    <p class="sub">You can close this tab and open the app directly from inside GHL.</p>
+  </div>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const locationId = params.get('locationId');
+    if (locationId) {
+      document.getElementById('open-ghl').href = `/app?locationId=${locationId}`;
+    }
+  </script>
+</body>
+</html>
