@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["nodejs_22", "python3", "pkg-config"]
+
+[phases.install]
+cmds = ["npm i"]
+
+[start]
+cmd = "npm start"

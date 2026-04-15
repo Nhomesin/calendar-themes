@@ -1,92 +1,58 @@
-const Database = require('better-sqlite3');
+require('dotenv').config();
+
+const express = require('express');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../../data/caltheme.db');
+const { initDb } = require('./db');
+const oauthRoutes = require('./routes/oauth');
+const webhookRoutes = require('./routes/webhooks');
 
-// Ensure data directory exists
-const fs = require('fs');
-fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-const db = new Database(DB_PATH);
+// ── Middleware ───────────────────────────────────────────────────────────────
+app.use(cors({ origin: process.env.APP_BASE_URL }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(express.static(path.join(__dirname, '../public')));
 
-// Enable WAL mode for better concurrent read performance
-db.pragma('journal_mode = WAL');
+// ── Routes ───────────────────────────────────────────────────────────────────
+app.use('/oauth', oauthRoutes);
+app.use('/webhooks', webhookRoutes);
 
-// ── Schema ──────────────────────────────────────────────────────────────────
+// Health check — Railway uses this to confirm the app is up
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', app: 'CalTheme', ts: new Date().toISOString() });
+});
 
-db.exec(`
-  CREATE TABLE IF NOT EXISTS locations (
-    location_id     TEXT PRIMARY KEY,
-    access_token    TEXT NOT NULL,
-    refresh_token   TEXT NOT NULL,
-    token_expires_at INTEGER NOT NULL,
-    company_id      TEXT,
-    location_name   TEXT,
-    installed_at    INTEGER NOT NULL DEFAULT (unixepoch()),
-    active          INTEGER NOT NULL DEFAULT 1
-  );
+// Post-install page
+app.get('/installed', (req, res) => {
+  res.sendFile(path.join(__dirname, '../public/installed.html'));
+});
 
-  CREATE TABLE IF NOT EXISTS themes (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    location_id     TEXT NOT NULL UNIQUE,
-    primary_color   TEXT NOT NULL DEFAULT '#6C63FF',
-    bg_color        TEXT NOT NULL DEFAULT '#FFFFFF',
-    text_color      TEXT NOT NULL DEFAULT '#1A1A1A',
-    button_color    TEXT NOT NULL DEFAULT '#6C63FF',
-    button_text     TEXT NOT NULL DEFAULT '#FFFFFF',
-    font_family     TEXT NOT NULL DEFAULT 'Inter, sans-serif',
-    border_radius   INTEGER NOT NULL DEFAULT 8,
-    custom_css      TEXT NOT NULL DEFAULT '',
-    updated_at      INTEGER NOT NULL DEFAULT (unixepoch()),
-    FOREIGN KEY (location_id) REFERENCES locations(location_id) ON DELETE CASCADE
-  );
-`);
+// Theme builder UI placeholder (Step 4 will fill this in)
+app.get('/app', (req, res) => {
+  res.send(`
+    <html><body style="font-family:sans-serif;padding:2rem">
+      <h2>CalTheme Builder</h2>
+      <p>Location ID: <strong>${req.query.locationId || 'not provided'}</strong></p>
+      <p style="color:#888">Theme builder UI coming in Step 4.</p>
+    </body></html>
+  `);
+});
 
-// ── Helpers ─────────────────────────────────────────────────────────────────
-
-const locationQueries = {
-  upsert: db.prepare(`
-    INSERT INTO locations (location_id, access_token, refresh_token, token_expires_at, company_id, location_name)
-    VALUES (@location_id, @access_token, @refresh_token, @token_expires_at, @company_id, @location_name)
-    ON CONFLICT(location_id) DO UPDATE SET
-      access_token    = excluded.access_token,
-      refresh_token   = excluded.refresh_token,
-      token_expires_at = excluded.token_expires_at,
-      company_id      = excluded.company_id,
-      location_name   = excluded.location_name,
-      active          = 1
-  `),
-
-  get: db.prepare(`SELECT * FROM locations WHERE location_id = ? AND active = 1`),
-
-  updateTokens: db.prepare(`
-    UPDATE locations
-    SET access_token = @access_token,
-        refresh_token = @refresh_token,
-        token_expires_at = @token_expires_at
-    WHERE location_id = @location_id
-  `),
-
-  deactivate: db.prepare(`UPDATE locations SET active = 0 WHERE location_id = ?`),
-};
-
-const themeQueries = {
-  get: db.prepare(`SELECT * FROM themes WHERE location_id = ?`),
-
-  upsert: db.prepare(`
-    INSERT INTO themes (location_id, primary_color, bg_color, text_color, button_color, button_text, font_family, border_radius, custom_css, updated_at)
-    VALUES (@location_id, @primary_color, @bg_color, @text_color, @button_color, @button_text, @font_family, @border_radius, @custom_css, unixepoch())
-    ON CONFLICT(location_id) DO UPDATE SET
-      primary_color = excluded.primary_color,
-      bg_color      = excluded.bg_color,
-      text_color    = excluded.text_color,
-      button_color  = excluded.button_color,
-      button_text   = excluded.button_text,
-      font_family   = excluded.font_family,
-      border_radius = excluded.border_radius,
-      custom_css    = excluded.custom_css,
-      updated_at    = unixepoch()
-  `),
-};
-
-module.exports = { db, locationQueries, themeQueries };
+// ── Start — init DB first, then open for traffic ───────────────────────
+initDb()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`CalTheme running on port ${PORT}`);
+      console.log(`Health: http://localhost:${PORT}/health`);
+    });
+  })
+  .catch((err) => {
+    console.error('Failed to initialise database:', err);
+    process.exit(1);
+  });
