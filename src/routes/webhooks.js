@@ -1,25 +1,32 @@
 const router = require('express').Router();
 const { locationQueries } = require('../db');
 
-// GHL sends POST requests to these endpoints when installs/uninstalls happen.
-// These act as a secondary safety net alongside the OAuth callback.
+// GHL sends ALL webhook events to a single URL.
+// The event type is in req.body.type — branch on that.
+router.post('/', (req, res) => {
+  const { type, locationId, companyId } = req.body;
 
-router.post('/install', (req, res) => {
-  const { locationId, companyId } = req.body;
-  console.log(`[Webhook] Install event received for location: ${locationId}`);
-  // The OAuth callback already handles token storage.
-  // This webhook is a backup signal — useful for logging or analytics.
-  res.sendStatus(200);
-});
+  console.log(`[Webhook] Event received: type=${type} locationId=${locationId}`);
 
-router.post('/uninstall', (req, res) => {
-  const { locationId } = req.body;
+  switch (type) {
+    case 'INSTALL':
+      // OAuth callback already stores the tokens.
+      // This is a backup confirmation signal.
+      console.log(`[Webhook] Install confirmed for location: ${locationId}`);
+      break;
 
-  if (locationId) {
-    locationQueries.deactivate.run(locationId);
-    console.log(`[Webhook] Uninstall — deactivated location: ${locationId}`);
+    case 'UNINSTALL':
+      if (locationId) {
+        locationQueries.deactivate(locationId);
+        console.log(`[Webhook] Uninstall — deactivated location: ${locationId}`);
+      }
+      break;
+
+    default:
+      console.log(`[Webhook] Unhandled event type: ${type}`);
   }
 
+  // Always respond 200 quickly — GHL will retry if you don't
   res.sendStatus(200);
 });
 
