@@ -461,7 +461,7 @@
             </select>
           </div>
         </div>
-        ${embedUrl ? `<div class="assignment-embed-url" title="Click to copy">${escHtml(embedUrl)}</div>` : ''}
+        ${embedUrl ? renderEmbedShare(embedUrl, cal.name) : ''}
       `;
 
       const sel = row.querySelector('select');
@@ -477,11 +477,103 @@
         renderGallery();
       });
 
-      const urlEl = row.querySelector('.assignment-embed-url');
-      if (urlEl) urlEl.onclick = () => copyUrl(embedUrl);
+      wireShareBlock(row, embedUrl, cal.name);
 
       body.appendChild(row);
     });
+  }
+
+  // ── Embed share block ────────────────────────────────────────────────────
+
+  function renderEmbedShare(url, calName) {
+    const safeName = (calName || 'Booking').replace(/[^\w -]/g, '').trim() || 'Booking';
+    // Formats
+    const formats = [
+      { key: 'url',    label: 'URL' },
+      { key: 'iframe', label: 'iFrame' },
+      { key: 'link',   label: 'Link' },
+      { key: 'script', label: 'Popup' },
+    ];
+
+    let tabs = '';
+    formats.forEach((f, i) => {
+      tabs += `<button class="share-tab ${i === 0 ? 'active' : ''}" data-share-tab="${f.key}">${f.label}</button>`;
+    });
+
+    return `
+      <div class="share-block" data-share-url="${escHtml(url)}" data-share-name="${escHtml(safeName)}">
+        <div class="share-tabs">${tabs}</div>
+        <div class="share-body">
+          <div class="share-code" data-share-content></div>
+          <button class="share-copy" data-share-copy aria-label="Copy">
+            <svg viewBox="0 0 16 16" fill="none" class="share-copy-default"><rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" stroke="currentColor" stroke-width="1.3"/></svg>
+            <svg viewBox="0 0 16 16" fill="none" class="share-copy-done"><path d="M3 8l3 3 7-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="share-copy-label">Copy</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireShareBlock(row, url, calName) {
+    const block = row.querySelector('.share-block');
+    if (!block) return;
+
+    const safeName = (calName || 'Booking').replace(/[^\w -]/g, '').trim() || 'Book';
+    const codeEl = block.querySelector('[data-share-content]');
+    const copyBtn = block.querySelector('[data-share-copy]');
+
+    let activeKey = 'url';
+
+    function formatFor(key) {
+      switch (key) {
+        case 'url':
+          return url;
+        case 'iframe':
+          return `<iframe src="${url}" width="100%" height="720" style="border:none;max-width:760px;display:block;margin:0 auto" title="${safeName}"></iframe>`;
+        case 'link':
+          return `<a href="${url}" target="_blank" rel="noopener">Book a time</a>`;
+        case 'script':
+          return `<!-- Popup button -->\n<button onclick="window.open('${url}', '_blank', 'width=520,height=780')" style="padding:10px 18px;border:none;border-radius:8px;background:#111;color:#fff;font-weight:600;cursor:pointer">Book a time</button>`;
+        default:
+          return url;
+      }
+    }
+
+    function renderContent() {
+      codeEl.textContent = formatFor(activeKey);
+    }
+
+    block.querySelectorAll('[data-share-tab]').forEach(tab => {
+      tab.onclick = () => {
+        activeKey = tab.dataset.shareTab;
+        block.querySelectorAll('[data-share-tab]').forEach(t => t.classList.toggle('active', t === tab));
+        renderContent();
+        block.classList.remove('copied');
+      };
+    });
+
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(formatFor(activeKey));
+        block.classList.add('copied');
+        showToast(labelFor(activeKey) + ' copied', 'ok');
+        setTimeout(() => block.classList.remove('copied'), 1600);
+      } catch (e) {
+        showToast('Copy failed', 'err');
+      }
+    };
+
+    renderContent();
+  }
+
+  function labelFor(key) {
+    return {
+      url: 'URL',
+      iframe: 'Embed code',
+      link: 'Link HTML',
+      script: 'Popup code',
+    }[key] || 'Code';
   }
 
   async function assignTheme(themeId, calendarId, calendarName) {
