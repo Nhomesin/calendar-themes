@@ -491,6 +491,52 @@ textarea.code-input {
 
 .assignment-embed-url:hover { text-decoration: underline; }
 
+/* ── Step Order List ─────────────────────────────────────────────────────── */
+
+.step-order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.step-order-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+
+.step-order-handle {
+  color: var(--muted);
+  font-size: 11px;
+  cursor: default;
+}
+
+.step-order-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.step-order-arrows {
+  display: flex;
+  gap: 2px;
+}
+
+.step-order-arrows .theme-card-action {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+  padding: 0;
+}
+
+.flow-cards .option-card {
+  text-align: center;
+}
+
 /* ── Toast ───────────────────────────────────────────────────────────────── */
 
 .toast {

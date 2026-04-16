@@ -467,23 +467,64 @@
   // Layout panel
   function renderLayoutPanel(body) {
     const l = currentConfig.layout || {};
+    const stepsOrder = l.stepsOrder || ['calendar', 'time', 'form', 'confirm'];
+
+    // Step flow presets
+    const flowPresets = [
+      { id: 'date-time-form',   label: 'Date > Time > Form',     steps: ['calendar', 'time', 'form', 'confirm'] },
+      { id: 'time-date-form',   label: 'Time > Date > Form',     steps: ['time', 'calendar', 'form', 'confirm'] },
+      { id: 'date-time-inline', label: 'Date + Time > Form',     steps: ['calendar+time', 'form', 'confirm'] },
+    ];
+
+    const currentFlowId = getFlowPresetId(stepsOrder, flowPresets);
+
+    let flowHtml = '';
+    flowPresets.forEach(fp => {
+      flowHtml += `
+        <div class="option-card ${fp.id === currentFlowId ? 'active' : ''}" data-flow="${fp.id}">
+          <div style="font-size:11px;font-weight:500">${fp.label}</div>
+        </div>
+      `;
+    });
+
+    // Custom drag-sortable step list
+    let stepListHtml = '';
+    stepsOrder.forEach((step, i) => {
+      const label = stepLabel(step);
+      stepListHtml += `
+        <div class="step-order-item" data-step="${step}">
+          <span class="step-order-handle">&#9776;</span>
+          <span class="step-order-label">${label}</span>
+          <div class="step-order-arrows">
+            <button class="theme-card-action" title="Move up" data-move-step="${i}" data-dir="-1">&#8593;</button>
+            <button class="theme-card-action" title="Move down" data-move-step="${i}" data-dir="1">&#8595;</button>
+          </div>
+        </div>
+      `;
+    });
+
     body.innerHTML = `
       <div class="section">
         <div class="section-label">Layout type</div>
         <div class="option-cards">
           <div class="option-card ${l.type === 'multi-step' ? 'active' : ''}" data-layout="multi-step">
-            <div class="option-card-icon">📑</div>
+            <div class="option-card-icon">&#128209;</div>
             Multi-step
           </div>
           <div class="option-card ${l.type === 'single-page' ? 'active' : ''}" data-layout="single-page">
-            <div class="option-card-icon">📃</div>
+            <div class="option-card-icon">&#128195;</div>
             Single page
           </div>
           <div class="option-card ${l.type === 'sidebar' ? 'active' : ''}" data-layout="sidebar">
-            <div class="option-card-icon">📐</div>
+            <div class="option-card-icon">&#128208;</div>
             Sidebar
           </div>
         </div>
+      </div>
+      <div class="section">
+        <div class="section-label">Booking flow</div>
+        <div class="option-cards flow-cards">${flowHtml}</div>
+        <div class="step-order-list" style="margin-top:10px">${stepListHtml}</div>
       </div>
       <div class="section">
         <div class="section-label">Spacing</div>
@@ -534,6 +575,36 @@
       };
     });
 
+    // Flow preset cards
+    body.querySelectorAll('[data-flow]').forEach(card => {
+      card.onclick = () => {
+        const preset = flowPresets.find(p => p.id === card.dataset.flow);
+        if (!preset) return;
+        if (!currentConfig.layout) currentConfig.layout = {};
+        currentConfig.layout.stepsOrder = [...preset.steps];
+        renderEditor();
+        updatePreview();
+      };
+    });
+
+    // Step reorder buttons
+    body.querySelectorAll('[data-move-step]').forEach(btn => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.dataset.moveStep);
+        const dir = parseInt(btn.dataset.dir);
+        const steps = currentConfig.layout?.stepsOrder || ['calendar', 'time', 'form', 'confirm'];
+        const newIdx = idx + dir;
+        // Don't allow moving confirm away from last position
+        if (newIdx < 0 || newIdx >= steps.length) return;
+        if (steps[idx] === 'confirm' || steps[newIdx] === 'confirm') return;
+        [steps[idx], steps[newIdx]] = [steps[newIdx], steps[idx]];
+        if (!currentConfig.layout) currentConfig.layout = {};
+        currentConfig.layout.stepsOrder = steps;
+        renderEditor();
+        updatePreview();
+      };
+    });
+
     // Sliders
     body.querySelectorAll('input[type="range"]').forEach(el => {
       el.addEventListener('input', (e) => {
@@ -552,6 +623,25 @@
       currentConfig.calendar.firstDayOfWeek = parseInt(e.target.value);
       updatePreview();
     });
+  }
+
+  function getFlowPresetId(steps, presets) {
+    const key = steps.join(',');
+    for (const p of presets) {
+      if (p.steps.join(',') === key) return p.id;
+    }
+    return null;
+  }
+
+  function stepLabel(step) {
+    const labels = {
+      'calendar': 'Date picker',
+      'time': 'Time slots',
+      'form': 'Booking form',
+      'confirm': 'Confirmation',
+      'calendar+time': 'Date + Time',
+    };
+    return labels[step] || step;
   }
 
   // Time Slots panel

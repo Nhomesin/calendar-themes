@@ -91,14 +91,15 @@ class CalendarRenderer {
       '--ct-transition':     a.transitionSpeed || '0.2s',
     };
 
-    const root = this.container.closest('html') || document.documentElement;
+    // In preview mode, scope vars to the container; in embed mode, use :root
+    const target = this.previewMode ? this.container : (this.container.closest('html') || document.documentElement);
     for (const [k, v] of Object.entries(vars)) {
-      root.style.setProperty(k, v);
+      target.style.setProperty(k, v);
     }
 
     // Slot columns
     const cols = (this.config.timeSlots && this.config.timeSlots.columns) || 3;
-    root.style.setProperty('--ct-slot-cols', cols);
+    target.style.setProperty('--ct-slot-cols', cols);
   }
 
   // ── Main Render ─────────────────────────────────────────────────────────
@@ -139,7 +140,7 @@ class CalendarRenderer {
 
     // Build each step
     this.steps.forEach((stepName, i) => {
-      const section = el('div', `ct-step ct-step-${stepName}`);
+      const section = el('div', `ct-step ct-step-${stepName.replace('+', '-')}`);
       if (layout === 'multi-step') {
         if (i === this.currentStep) {
           section.classList.add('active');
@@ -172,10 +173,11 @@ class CalendarRenderer {
 
   renderStep(container, stepName) {
     switch (stepName) {
-      case 'calendar': this.renderCalendar(container); break;
-      case 'time':     this.renderTimeSlots(container); break;
-      case 'form':     this.renderForm(container); break;
-      case 'confirm':  this.renderConfirmation(container); break;
+      case 'calendar':      this.renderCalendar(container); break;
+      case 'time':          this.renderTimeSlots(container); break;
+      case 'calendar+time': this.renderCalendarAndTime(container); break;
+      case 'form':          this.renderForm(container); break;
+      case 'confirm':       this.renderConfirmation(container); break;
     }
   }
 
@@ -251,6 +253,68 @@ class CalendarRenderer {
     }
 
     container.appendChild(days);
+  }
+
+  // ── Combined Calendar + Time ───────────────────────────────────────────
+
+  renderCalendarAndTime(container) {
+    const wrapper = el('div', 'ct-combined');
+
+    const calSide = el('div', 'ct-combined-cal');
+    this.renderCalendar(calSide);
+    wrapper.appendChild(calSide);
+
+    const timeSide = el('div', 'ct-combined-time');
+    this.renderTimeSlotsInline(timeSide);
+    wrapper.appendChild(timeSide);
+
+    container.appendChild(wrapper);
+
+    // Override day click to stay on same step and refresh time slots
+    calSide.querySelectorAll('.ct-cal-day').forEach(dayBtn => {
+      const origClick = dayBtn.onclick;
+      dayBtn.onclick = () => {
+        if (dayBtn.classList.contains('disabled')) return;
+        const dateStr = dayBtn.textContent;
+        const d = parseInt(dateStr);
+        if (isNaN(d)) return;
+        this.selectedDate = this.dateStr(this.currentYear, this.currentMonth, d);
+        this.selectedSlot = null;
+        this.render();
+      };
+    });
+  }
+
+  renderTimeSlotsInline(container) {
+    const dateStr = this.selectedDate || this.getPreviewDate();
+    const slots = this.availableSlots[dateStr] || [];
+
+    const dateLabel = el('div', 'ct-slots-date');
+    dateLabel.textContent = this.selectedDate ? this.formatDate(dateStr) : 'Select a date';
+    container.appendChild(dateLabel);
+
+    if (slots.length === 0) {
+      const empty = el('div', 'ct-slots-empty');
+      empty.textContent = this.selectedDate ? 'No available times' : 'Pick a date to see times';
+      container.appendChild(empty);
+      return;
+    }
+
+    const style = (this.config.timeSlots && this.config.timeSlots.style) || 'pills';
+    const grid = el('div', `ct-slots-grid style-${style}`);
+
+    slots.forEach(slot => {
+      const slotEl = el('button', 'ct-slot');
+      slotEl.textContent = this.formatTime(slot);
+      if (this.selectedSlot === slot) slotEl.classList.add('selected');
+      slotEl.onclick = () => {
+        this.selectedSlot = slot;
+        this.goToStep(this.steps.indexOf('form'));
+      };
+      grid.appendChild(slotEl);
+    });
+
+    container.appendChild(grid);
   }
 
   // ── Time Slots ──────────────────────────────────────────────────────────
@@ -363,7 +427,9 @@ class CalendarRenderer {
     form.appendChild(submitBtn);
 
     container.appendChild(form);
-    this.addBackButton(container, 'time');
+    // Back goes to time step, or combined step if using calendar+time
+    const backTarget = this.steps.includes('calendar+time') ? 'calendar+time' : 'time';
+    this.addBackButton(container, backTarget);
   }
 
   async handleSubmit(form) {
