@@ -6,14 +6,17 @@ const {
   GHL_CLIENT_ID,
   GHL_CLIENT_SECRET,
   GHL_REDIRECT_URI,
-  GHL_AUTH_BASE,
-  GHL_API_BASE,
   APP_BASE_URL,
 } = process.env;
 
+// GHL has two separate base URLs:
+// - consent screen (chooselocation) → marketplace.gohighlevel.com
+// - token exchange & API calls      → services.leadconnectorhq.com
+const GHL_AUTH_BASE = 'https://marketplace.gohighlevel.com';
+const GHL_TOKEN_BASE = 'https://services.leadconnectorhq.com';
+const GHL_API_BASE = 'https://services.leadconnectorhq.com';
+
 // ── Step 1: Initiate OAuth install
-// GHL calls this when a user clicks "Install" on your Marketplace listing.
-// We redirect them to GHL's OAuth consent screen.
 router.get('/install', (req, res) => {
   const params = new URLSearchParams({
     response_type: 'code',
@@ -30,8 +33,6 @@ router.get('/install', (req, res) => {
 });
 
 // ── Step 2: OAuth callback
-// GHL redirects here after the user approves the install.
-// We exchange the code for tokens and store them.
 router.get('/callback', async (req, res) => {
   const { code, locationId } = req.query;
 
@@ -40,9 +41,9 @@ router.get('/callback', async (req, res) => {
   }
 
   try {
-    // Exchange auth code for access + refresh tokens
+    // Token exchange goes to services.leadconnectorhq.com, not marketplace
     const tokenRes = await axios.post(
-      `${GHL_AUTH_BASE}/oauth/token`,
+      `${GHL_TOKEN_BASE}/oauth/token`,
       new URLSearchParams({
         grant_type: 'authorization_code',
         code,
@@ -50,7 +51,12 @@ router.get('/callback', async (req, res) => {
         client_id: GHL_CLIENT_ID,
         client_secret: GHL_CLIENT_SECRET,
       }),
-      { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+        },
+      }
     );
 
     const {
@@ -72,53 +78,63 @@ router.get('/callback', async (req, res) => {
     try {
       const locRes = await axios.get(
         `${GHL_API_BASE}/locations/${resolvedLocationId}`,
-        { headers: { Authorization: `Bearer ${access_token}`, Version: '2021-07-28' } }
+        {
+          headers: {
+            Authorization: `Bearer ${access_token}`,
+            Version: '2021-07-28',
+            Accept: 'application/json',
+          },
+        }
       );
       locationName = locRes.data?.location?.name || null;
     } catch (_) {
-      // Non-fatal — we can live without the name
+      // Non-fatal
     }
 
-    // Store tokens in DB
-    locationQueries.upsert.run({
+    locationQueries.upsert({
       location_id: resolvedLocationId,
       access_token,
       refresh_token,
-      token_expires_at: Math.floor(Date.now() / 1000) + expires_in,
+      token_expires_at: Math.floor(Date.now() / 1000) + (expires_in || 86400),
       company_id: companyId || null,
       location_name: locationName,
     });
 
     console.log(`[OAuth] Installed for location: ${resolvedLocationId} (${locationName})`);
 
-    // Redirect to post-install success page
     res.redirect(`${APP_BASE_URL}/installed?locationId=${resolvedLocationId}`);
   } catch (err) {
-    console.error('[OAuth] Callback error:', err?.response?.data || err.message);
-    res.status(500).send('OAuth install failed. Check server logs.');
+    const errData = err?.response?.data;
+    console.error('[OAuth] Callback error:', typeof errData === 'object' ? JSON.stringify(errData) : errData || err.message);
+    res.status(500).send(`OAuth install failed: ${JSON.stringify(err?.response?.data || err.message)}`);
   }
 });
 
-// ── Token refresh helper (called internally, not a user-facing route)
+// ── Token refresh (internal helper)
 async function refreshAccessToken(location) {
   const tokenRes = await axios.post(
-    `${GHL_AUTH_BASE}/oauth/token`,
+    `${GHL_TOKEN_BASE}/oauth/token`,
     new URLSearchParams({
       grant_type: 'refresh_token',
       refresh_token: location.refresh_token,
       client_id: GHL_CLIENT_ID,
       client_secret: GHL_CLIENT_SECRET,
     }),
-    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+    {
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Accept': 'application/json',
+      },
+    }
   );
 
   const { access_token, refresh_token, expires_in } = tokenRes.data;
 
-  locationQueries.updateTokens.run({
+  locationQueries.updateTokens({
     location_id: location.location_id,
     access_token,
     refresh_token,
-    token_expires_at: Math.floor(Date.now() / 1000) + expires_in,
+    token_expires_at: Math.floor(Date.now() / 1000) + (expires_in || 86400),
   });
 
   return access_token;
