@@ -42,8 +42,10 @@ router.get('/slots/:locationId/:calendarId', requireLocation, async (req, res) =
 
     res.json({ slots: normalized });
   } catch (err) {
-    console.error('[Slots] Fetch error:', err?.response?.data || err.message);
-    res.status(502).json({ error: 'Failed to fetch available slots from GHL.' });
+    const detail = err?.response?.data || err.message;
+    const status = err?.response?.status;
+    console.error(`[Slots] Fetch error (HTTP ${status}):`, JSON.stringify(detail));
+    res.status(502).json({ error: 'Failed to fetch available slots from GHL.', detail, ghlStatus: status });
   }
 });
 
