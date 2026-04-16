@@ -3,90 +3,189 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CalTheme Builder</title>
+  <title>CalTheme — Booking Calendar Designer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/builder.css">
   <link rel="stylesheet" href="/css/embed-preview.css">
 </head>
 <body>
 
-<div class="shell" id="shell">
-
-  <div class="loading-overlay" id="loading">
-    <div class="loading-inner">
-      <div class="spinner"></div>
-      <span class="loading-text">Loading builder...</span>
-    </div>
+<!-- Loading overlay -->
+<div class="boot-overlay" id="loading">
+  <div class="boot-inner">
+    <div class="boot-mark"></div>
+    <span class="boot-text">Preparing your workspace</span>
   </div>
+</div>
 
-  <!-- Topbar -->
-  <header class="topbar">
-    <div class="topbar-left">
-      <div class="logo-mark">
-        <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="2" y="4" width="14" height="12" rx="3" stroke="white" stroke-width="1.6"/>
-          <path d="M5 2V5M13 2V5M2 8H16" stroke="white" stroke-width="1.6" stroke-linecap="round"/>
-          <circle cx="7" cy="12" r="1.2" fill="white"/>
-          <circle cx="11" cy="12" r="1.2" fill="white"/>
-        </svg>
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- GALLERY VIEW                                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="view view-gallery" id="view-gallery" data-view="gallery">
+
+  <header class="nav">
+    <div class="nav-inner">
+      <div class="brand">
+        <span class="brand-mark">
+          <svg viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2.5" y="4.5" width="15" height="13" rx="3" stroke="currentColor" stroke-width="1.6"/>
+            <path d="M6 2.5V5.5M14 2.5V5.5M2.5 9H17.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <circle cx="7" cy="13" r="1.2" fill="currentColor"/>
+            <circle cx="13" cy="13" r="1.2" fill="currentColor"/>
+          </svg>
+        </span>
+        <span class="brand-name">CalTheme</span>
+        <span class="brand-loc" id="loc-display">loading…</span>
       </div>
-      <span class="app-name">CalTheme</span>
-      <span class="topbar-divider"></span>
-      <span class="loc-pill" id="loc-display">loading...</span>
-    </div>
-    <div class="topbar-right">
-      <button class="save-btn" id="save-btn">
-        <svg class="save-icon" viewBox="0 0 16 16" fill="none"><path d="M2 2v12h12V5l-3-3H2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M5 2v4h5V2" stroke="currentColor" stroke-width="1.2"/><rect x="4" y="9" width="8" height="4" rx="1" stroke="currentColor" stroke-width="1.2"/></svg>
-        <span id="save-label">Save</span>
-      </button>
+
+      <div class="nav-actions">
+        <button class="btn btn-ghost" id="nav-assignments-btn">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Assignments
+        </button>
+        <button class="btn btn-primary" id="new-theme-btn">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          New theme
+        </button>
+      </div>
     </div>
   </header>
 
-  <!-- Theme List (Left) -->
-  <aside class="theme-list">
-    <div class="theme-list-header">
-      <span class="panel-title">Themes</span>
-      <button class="new-theme-btn" id="new-theme-btn">
-        <svg viewBox="0 0 14 14" fill="none"><path d="M7 2v10M2 7h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-        New
-      </button>
-    </div>
-    <div class="theme-list-items" id="theme-list-items">
-      <!-- Populated by builder-app.js -->
-    </div>
-  </aside>
-
-  <!-- Editor (Middle) -->
-  <div class="editor">
-    <div class="editor-tabs" id="editor-tabs">
-      <!-- Populated by builder-app.js -->
-    </div>
-    <div class="editor-body" id="editor-body">
-      <!-- Populated by builder-app.js -->
-    </div>
-  </div>
-
-  <!-- Preview (Right) -->
-  <main class="preview">
-    <div class="preview-toolbar">
-      <span class="panel-title">Preview</span>
-      <div id="preview-tabs" class="preview-tabs">
-        <!-- Populated by builder-app.js -->
+  <main class="gallery">
+    <div class="gallery-head">
+      <div>
+        <h1 class="gallery-title">Your themes</h1>
+        <p class="gallery-sub" id="gallery-sub">Design your booking calendar to match your brand.</p>
+      </div>
+      <div class="gallery-controls">
+        <div class="search-field">
+          <svg viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="m14 14-3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <input type="text" id="search-input" placeholder="Search themes" autocomplete="off">
+        </div>
       </div>
     </div>
-    <div class="preview-body" id="preview-body">
+
+    <div class="theme-grid" id="theme-grid">
       <!-- Populated by builder-app.js -->
     </div>
-  </main>
 
+    <div class="gallery-empty" id="gallery-empty" hidden>
+      <div class="gallery-empty-mark">
+        <svg viewBox="0 0 48 48" fill="none"><rect x="8" y="12" width="32" height="28" rx="4" stroke="currentColor" stroke-width="1.5"/><path d="M14 8v8M34 8v8M8 22h32" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </div>
+      <h2 class="gallery-empty-title">No themes yet</h2>
+      <p class="gallery-empty-sub">Pick a starting point or begin from scratch.</p>
+      <button class="btn btn-primary" id="empty-new-btn">Create your first theme</button>
+    </div>
+  </main>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- EDITOR VIEW                                                              -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<section class="view view-editor" id="view-editor" data-view="editor" hidden>
+
+  <header class="nav nav-editor">
+    <div class="nav-inner">
+      <div class="nav-left">
+        <button class="btn btn-ghost btn-icon" id="back-btn" aria-label="Back to gallery" title="Back to gallery">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <div class="nav-title-group">
+          <span class="nav-crumb">Themes</span>
+          <svg class="nav-sep" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <input type="text" class="nav-title-input" id="theme-name-input" placeholder="Untitled theme">
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <span class="save-status" id="save-status"></span>
+        <button class="btn btn-ghost" id="editor-assignments-btn">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          Assignments
+        </button>
+        <button class="btn btn-primary" id="save-btn">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M3 3v10h10V6l-3-3H3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 3v3h4V3" stroke="currentColor" stroke-width="1.3"/></svg>
+          <span id="save-label">Save</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <div class="workspace">
+
+    <!-- Controls column -->
+    <aside class="panel">
+      <div class="panel-tabs" id="editor-tabs"></div>
+      <div class="panel-body" id="editor-body"></div>
+    </aside>
+
+    <!-- Preview column -->
+    <section class="stage">
+      <div class="stage-head">
+        <span class="stage-title">Live preview</span>
+        <div class="device-switch" id="device-switch">
+          <button class="device-btn active" data-device="desktop" aria-label="Desktop preview" title="Desktop">
+            <svg viewBox="0 0 16 16" fill="none"><rect x="2" y="3" width="12" height="8" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M6 13h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+          </button>
+          <button class="device-btn" data-device="mobile" aria-label="Mobile preview" title="Mobile">
+            <svg viewBox="0 0 16 16" fill="none"><rect x="4" y="2" width="8" height="12" rx="1.5" stroke="currentColor" stroke-width="1.4"/><circle cx="8" cy="12" r=".5" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="stage-body" id="stage-body">
+        <div class="preview-frame" id="preview-frame"></div>
+      </div>
+    </section>
+
+  </div>
+</section>
+
+
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ASSIGNMENTS DRAWER                                                       -->
+<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+<aside class="drawer" id="assignments-drawer" hidden aria-hidden="true">
+  <header class="drawer-head">
+    <div>
+      <h2 class="drawer-title">Calendar Assignments</h2>
+      <p class="drawer-sub">Pick which theme each calendar uses.</p>
+    </div>
+    <button class="btn btn-ghost btn-icon" id="drawer-close" aria-label="Close">
+      <svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+  <div class="drawer-body" id="drawer-body"></div>
+</aside>
+
+
+<!-- Preset picker modal -->
+<div class="modal-backdrop" id="preset-backdrop" hidden></div>
+<div class="modal" id="preset-modal" hidden aria-hidden="true">
+  <header class="modal-head">
+    <div>
+      <h2 class="modal-title">Start a new theme</h2>
+      <p class="modal-sub">Pick a preset or begin from scratch.</p>
+    </div>
+    <button class="btn btn-ghost btn-icon" id="preset-close" aria-label="Close">
+      <svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+  <div class="modal-body" id="preset-body"></div>
 </div>
 
+
+<!-- Toast -->
 <div class="toast" id="toast">
-  <svg class="toast-icon" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.3"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <svg class="toast-icon toast-ok" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.3"/><path d="M5 8l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <svg class="toast-icon toast-err" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="currentColor" stroke-width="1.3"/><path d="M8 5v4M8 11v.01" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
   <span class="toast-msg"></span>
 </div>
+
 
 <script src="/js/calendar-renderer.js"></script>
 <script src="/js/builder-app.js"></script>

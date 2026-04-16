@@ -1,8 +1,5 @@
 /**
- * CalTheme Builder App
- *
- * Manages multi-theme CRUD, rich config editor, live preview via CalendarRenderer,
- * and calendar-to-theme assignment.
+ * CalTheme Builder — Gallery + Editor views
  */
 
 (function () {
@@ -22,12 +19,12 @@
   let previewRenderer = null;
   let presets = [];
   let activeEditorTab = 'colors';
-  let activePreviewTab = 'preview';
+  let searchQuery = '';
+  let previewDevice = 'desktop';
 
-  // ── DOM Refs ─────────────────────────────────────────────────────────────
-
-  const $ = (sel) => document.querySelector(sel);
-  const $$ = (sel) => document.querySelectorAll(sel);
+  // ── DOM refs ─────────────────────────────────────────────────────────────
+  const $ = s => document.querySelector(s);
+  const $$ = s => document.querySelectorAll(s);
 
   // ── Boot ─────────────────────────────────────────────────────────────────
 
@@ -36,6 +33,7 @@
 
     if (!LOC_ID) {
       $('#loading').classList.add('hidden');
+      renderGallery();
       return;
     }
 
@@ -47,183 +45,236 @@
         fetch(`${BASE_URL}/api/presets`),
       ]);
 
-      if (themesRes.ok) {
-        const data = await themesRes.json();
-        themes = data.themes || [];
-      }
-
-      if (calRes.ok) {
-        const data = await calRes.json();
-        calendars = data.calendars || [];
-      }
-
-      if (assignRes.ok) {
-        const data = await assignRes.json();
-        assignments = data.assignments || [];
-      }
-
-      if (presetsRes.ok) {
-        const data = await presetsRes.json();
-        presets = data.presets || [];
-      }
+      if (themesRes.ok) themes = (await themesRes.json()).themes || [];
+      if (calRes.ok) calendars = (await calRes.json()).calendars || [];
+      if (assignRes.ok) assignments = (await assignRes.json()).assignments || [];
+      if (presetsRes.ok) presets = (await presetsRes.json()).presets || [];
     } catch (e) {
       console.warn('Boot fetch error:', e);
     }
 
-    renderThemeList();
-
-    // Select first theme or show empty state
-    if (themes.length > 0) {
-      selectTheme(themes[0].id);
-    } else {
-      renderEditorEmpty();
-    }
-
+    renderGallery();
     $('#loading').classList.add('hidden');
   }
 
-  // ── Theme List ───────────────────────────────────────────────────────────
+  // ── View switching ───────────────────────────────────────────────────────
 
-  function renderThemeList() {
-    const container = $('#theme-list-items');
-    container.innerHTML = '';
-
-    themes.forEach(t => {
-      const config = typeof t.config === 'string' ? JSON.parse(t.config) : (t.config || {});
-      const colors = config.colors || {};
-      const assignCount = assignments.filter(a => a.theme_id === t.id).length;
-
-      const card = document.createElement('div');
-      card.className = `theme-card ${t.id === currentThemeId ? 'active' : ''}`;
-      card.onclick = () => selectTheme(t.id);
-
-      card.innerHTML = `
-        <div class="theme-card-top">
-          <div class="theme-card-name">${escHtml(t.name || 'Untitled')}</div>
-          <div class="theme-card-actions">
-            <button class="theme-card-action" title="Rename" onclick="event.stopPropagation(); window._builder.renameTheme('${t.id}')">&#9998;</button>
-            <button class="theme-card-action" title="Duplicate" onclick="event.stopPropagation(); window._builder.duplicateTheme('${t.id}')">&#10697;</button>
-            <button class="theme-card-action danger" title="Delete" onclick="event.stopPropagation(); window._builder.deleteTheme('${t.id}')">&#10005;</button>
-          </div>
-        </div>
-        <div class="theme-card-bottom">
-          <div class="theme-card-swatches">
-            <div class="theme-card-swatch" style="background:${colors.primary || '#6C63FF'}"></div>
-            <div class="theme-card-swatch" style="background:${colors.background || '#FFFFFF'}"></div>
-            <div class="theme-card-swatch" style="background:${colors.buttonBg || colors.primary || '#6C63FF'}"></div>
-          </div>
-          <div class="theme-card-meta">${assignCount} calendar${assignCount !== 1 ? 's' : ''}</div>
-        </div>
-      `;
-
-      container.appendChild(card);
+  function showView(name) {
+    document.querySelectorAll('.view').forEach(v => {
+      if (v.dataset.view === name) v.removeAttribute('hidden');
+      else v.setAttribute('hidden', '');
     });
+    window.scrollTo({ top: 0, behavior: 'instant' });
   }
 
-  function selectTheme(themeId) {
+  function openEditor(themeId) {
     const theme = themes.find(t => t.id === themeId);
     if (!theme) return;
 
     currentThemeId = themeId;
     currentConfig = typeof theme.config === 'string' ? JSON.parse(theme.config) : { ...(theme.config || {}) };
 
-    renderThemeList();
+    $('#theme-name-input').value = theme.name || 'Untitled theme';
+    showView('editor');
     renderEditor();
     renderPreview();
   }
 
-  function showPresetPicker() {
-    // Create modal overlay
-    const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.25);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;';
+  function backToGallery() {
+    renderGallery();
+    showView('gallery');
+    previewRenderer = null;
+  }
 
-    const modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.15);';
+  // ═══════════════════════════════════════════════════════════════════════════
+  // GALLERY
+  // ═══════════════════════════════════════════════════════════════════════════
 
-    let html = '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">Choose a starter theme</div>';
-    html += '<div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Pick a preset or start from scratch.</div>';
-    html += '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">';
+  function renderGallery() {
+    const grid = $('#theme-grid');
+    const empty = $('#gallery-empty');
+    const sub = $('#gallery-sub');
 
-    // Blank option
-    html += `
-      <div class="option-card" style="padding:14px 10px;cursor:pointer" data-preset-id="blank">
-        <div style="display:flex;gap:3px;margin-bottom:6px;justify-content:center">
-          <div style="width:16px;height:16px;border-radius:3px;border:1px dashed var(--border)"></div>
+    const filtered = themes.filter(t => {
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      return (t.name || '').toLowerCase().includes(q);
+    });
+
+    grid.innerHTML = '';
+
+    if (themes.length === 0) {
+      empty.removeAttribute('hidden');
+      grid.setAttribute('hidden', '');
+      sub.textContent = 'Design your booking calendar to match your brand.';
+      return;
+    }
+
+    empty.setAttribute('hidden', '');
+    grid.removeAttribute('hidden');
+
+    const themeWord = themes.length === 1 ? 'theme' : 'themes';
+    sub.textContent = `${themes.length} ${themeWord} · ${calendars.length} calendar${calendars.length === 1 ? '' : 's'} connected`;
+
+    // "New theme" card first
+    const newCard = document.createElement('div');
+    newCard.className = 'theme-card theme-card-new';
+    newCard.tabIndex = 0;
+    newCard.innerHTML = `
+      <div class="theme-card-new-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </div>
+      <div class="theme-card-new-title">New theme</div>
+      <div class="theme-card-new-sub">Start from scratch or a preset</div>
+    `;
+    newCard.onclick = () => openPresetModal();
+    newCard.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPresetModal(); } };
+    grid.appendChild(newCard);
+
+    // Theme cards
+    filtered.forEach(theme => {
+      const cfg = typeof theme.config === 'string' ? JSON.parse(theme.config) : (theme.config || {});
+      grid.appendChild(buildThemeCard(theme, cfg));
+    });
+  }
+
+  function buildThemeCard(theme, cfg) {
+    const colors = cfg.colors || {};
+    const typo = cfg.typography || {};
+    const spacing = cfg.spacing || {};
+    const comp = cfg.components || {};
+    const assignCount = assignments.filter(a => a.theme_id === theme.id).length;
+
+    const card = document.createElement('div');
+    card.className = 'theme-card';
+    card.tabIndex = 0;
+    card.setAttribute('role', 'button');
+    card.setAttribute('aria-label', `Edit ${theme.name || 'Untitled theme'}`);
+
+    // inline CSS vars for mini preview
+    const mpStyle = [
+      ['--mp-bg',       colors.background || '#FFFFFF'],
+      ['--mp-text',     colors.text || '#14110E'],
+      ['--mp-muted',    colors.textMuted || '#6B675E'],
+      ['--mp-primary',  colors.primary || colors.buttonBg || '#3730A3'],
+      ['--mp-btn-text', colors.buttonText || '#FFFFFF'],
+      ['--mp-surface',  colors.hoverBg || '#F4F3F0'],
+      ['--mp-line',     colors.border || '#E5E3DD'],
+      ['--mp-radius',   (spacing.borderRadius ?? 8) + 'px'],
+      ['--mp-font',     typo.fontFamily || "'Plus Jakarta Sans', sans-serif"],
+    ].map(([k, v]) => `${k}:${v}`).join(';');
+
+    const headerText = comp.headerText || 'Book an Appointment';
+
+    card.innerHTML = `
+      <button class="theme-card-menu" aria-label="Theme options">
+        <svg viewBox="0 0 16 16" fill="none"><circle cx="3" cy="8" r="1.4" fill="currentColor"/><circle cx="8" cy="8" r="1.4" fill="currentColor"/><circle cx="13" cy="8" r="1.4" fill="currentColor"/></svg>
+      </button>
+      <div class="menu-popover">
+        <button class="menu-item" data-action="rename"><svg viewBox="0 0 16 16" fill="none"><path d="M2 12l8-8 2 2-8 8H2v-2zM10 4l2-2 2 2-2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>Rename</button>
+        <button class="menu-item" data-action="duplicate"><svg viewBox="0 0 16 16" fill="none"><rect x="5" y="5" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/><path d="M11 5V3.5A1.5 1.5 0 009.5 2h-6A1.5 1.5 0 002 3.5v6A1.5 1.5 0 003.5 11H5" stroke="currentColor" stroke-width="1.3"/></svg>Duplicate</button>
+        <button class="menu-item danger" data-action="delete"><svg viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V2.5A.5.5 0 016.5 2h3a.5.5 0 01.5.5V4M5 4v9a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>Delete</button>
+      </div>
+
+      <div class="mini-preview" style="${mpStyle}">
+        <div class="mini-preview-header">
+          <div class="mini-preview-dot"></div>
+          <div class="mini-preview-label">${escHtml(headerText)}</div>
         </div>
-        <div style="font-size:11px;font-weight:500">Blank</div>
-        <div style="font-size:10px;color:var(--muted)">Start from scratch</div>
+        <div class="mini-preview-progress"><div></div><div></div><div></div><div></div></div>
+        <div class="mini-preview-row">
+          <div class="mini-preview-date">M</div>
+          <div class="mini-preview-date">T</div>
+          <div class="mini-preview-date active">W</div>
+          <div class="mini-preview-date">T</div>
+          <div class="mini-preview-date">F</div>
+        </div>
+        <div class="mini-preview-row">
+          <div class="mini-preview-date">14</div>
+          <div class="mini-preview-date">15</div>
+          <div class="mini-preview-date">16</div>
+          <div class="mini-preview-date active">17</div>
+          <div class="mini-preview-date">18</div>
+        </div>
+        <div class="mini-preview-pills">
+          <div class="mini-preview-pill">9:00</div>
+          <div class="mini-preview-pill selected">10:00</div>
+          <div class="mini-preview-pill">11:00</div>
+        </div>
+        <div class="mini-preview-cta">Confirm booking</div>
+      </div>
+
+      <div class="theme-card-info">
+        <div class="theme-card-row">
+          <div class="theme-card-name">${escHtml(theme.name || 'Untitled theme')}</div>
+          <div class="theme-card-swatches">
+            <div class="theme-card-swatch" style="background:${colors.primary || '#3730A3'}"></div>
+            <div class="theme-card-swatch" style="background:${colors.background || '#FFFFFF'}"></div>
+            <div class="theme-card-swatch" style="background:${colors.buttonBg || colors.primary || '#3730A3'}"></div>
+          </div>
+        </div>
+        <div class="theme-card-meta">
+          <span>${formatDate(theme.updated_at)}</span>
+          <span class="theme-card-meta-dot"></span>
+          <span class="theme-card-meta-chip">${assignCount} ${assignCount === 1 ? 'calendar' : 'calendars'}</span>
+        </div>
       </div>
     `;
 
-    presets.forEach(p => {
-      const pc = p.previewColors || {};
-      html += `
-        <div class="option-card" style="padding:14px 10px;cursor:pointer" data-preset-id="${p.id}">
-          <div style="display:flex;gap:3px;margin-bottom:6px;justify-content:center">
-            <div style="width:16px;height:16px;border-radius:3px;background:${pc.primary || '#6C63FF'}"></div>
-            <div style="width:16px;height:16px;border-radius:3px;background:${pc.background || '#FFF'};border:1px solid var(--border)"></div>
-            <div style="width:16px;height:16px;border-radius:3px;background:${pc.accent || pc.primary || '#6C63FF'}"></div>
-          </div>
-          <div style="font-size:11px;font-weight:500">${escHtml(p.name)}</div>
-          <div style="font-size:10px;color:var(--muted)">${escHtml(p.description || '')}</div>
-        </div>
-      `;
+    // Card click opens editor
+    card.onclick = (e) => {
+      if (e.target.closest('.theme-card-menu, .menu-popover')) return;
+      openEditor(theme.id);
+    };
+    card.onkeydown = e => { if (e.key === 'Enter') openEditor(theme.id); };
+
+    // Menu toggle
+    const menuBtn = card.querySelector('.theme-card-menu');
+    const popover = card.querySelector('.menu-popover');
+    menuBtn.onclick = (e) => {
+      e.stopPropagation();
+      // close other popovers
+      document.querySelectorAll('.menu-popover.open').forEach(p => { if (p !== popover) p.classList.remove('open'); });
+      popover.classList.toggle('open');
+    };
+
+    popover.querySelectorAll('[data-action]').forEach(btn => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
+        popover.classList.remove('open');
+        const action = btn.dataset.action;
+        if (action === 'rename')    await renameTheme(theme.id);
+        if (action === 'duplicate') await duplicateTheme(theme.id);
+        if (action === 'delete')    await deleteTheme(theme.id);
+      };
     });
 
-    html += '</div>';
-    modal.innerHTML = html;
-    overlay.appendChild(modal);
-    document.body.appendChild(overlay);
-
-    // Close on backdrop click
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) overlay.remove();
-    });
-
-    // Handle selection
-    modal.querySelectorAll('[data-preset-id]').forEach(card => {
-      card.addEventListener('click', () => {
-        const presetId = card.dataset.presetId;
-        let config = null;
-        let name = 'New Theme';
-
-        if (presetId !== 'blank') {
-          const preset = presets.find(p => p.id === presetId);
-          if (preset) {
-            config = preset.config;
-            name = preset.name;
-          }
-        }
-
-        overlay.remove();
-        doCreateTheme(name, config);
-      });
-    });
+    return card;
   }
+
+  // Close menu popovers on outside click
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.theme-card-menu, .menu-popover')) {
+      document.querySelectorAll('.menu-popover.open').forEach(p => p.classList.remove('open'));
+    }
+  });
+
+  // ── Theme CRUD ───────────────────────────────────────────────────────────
 
   async function doCreateTheme(name, presetConfig) {
     try {
       const res = await fetch(`${BASE_URL}/api/themes/${LOC_ID}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: name || 'New Theme', config: presetConfig || {} }),
+        body: JSON.stringify({ name: name || 'New theme', config: presetConfig || {} }),
       });
       if (!res.ok) throw new Error(await res.text());
       const theme = await res.json();
       themes.push(theme);
-      selectTheme(theme.id);
-      renderThemeList();
       showToast('Theme created', 'ok');
+      openEditor(theme.id);
     } catch (e) {
       showToast('Failed to create theme: ' + e.message, 'err');
-    }
-  }
-
-  function createTheme() {
-    if (presets.length > 0) {
-      showPresetPicker();
-    } else {
-      doCreateTheme('New Theme', null);
     }
   }
 
@@ -237,8 +288,7 @@
       if (!res.ok) throw new Error(await res.text());
       const theme = await res.json();
       themes.push(theme);
-      selectTheme(theme.id);
-      renderThemeList();
+      renderGallery();
       showToast('Theme duplicated', 'ok');
     } catch (e) {
       showToast('Failed to duplicate: ' + e.message, 'err');
@@ -246,84 +296,278 @@
   }
 
   async function deleteTheme(themeId) {
-    if (!confirm('Delete this theme? This cannot be undone.')) return;
+    const theme = themes.find(t => t.id === themeId);
+    if (!theme) return;
+    if (!confirm(`Delete "${theme.name || 'Untitled'}"? This cannot be undone.`)) return;
     try {
       const res = await fetch(`${BASE_URL}/api/themes/${LOC_ID}/${themeId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error(await res.text());
       themes = themes.filter(t => t.id !== themeId);
       assignments = assignments.filter(a => a.theme_id !== themeId);
-      if (currentThemeId === themeId) {
-        currentThemeId = themes.length > 0 ? themes[0].id : null;
-        if (currentThemeId) selectTheme(currentThemeId);
-        else renderEditorEmpty();
-      }
-      renderThemeList();
+      renderGallery();
       showToast('Theme deleted', 'ok');
     } catch (e) {
       showToast('Failed to delete: ' + e.message, 'err');
     }
   }
 
-  // ── Editor ───────────────────────────────────────────────────────────────
+  async function renameTheme(themeId) {
+    const theme = themes.find(t => t.id === themeId);
+    if (!theme) return;
+    const newName = prompt('Rename theme', theme.name || '');
+    if (!newName || !newName.trim() || newName.trim() === theme.name) return;
 
-  function renderEditorEmpty() {
-    $('#editor-body').innerHTML = `
-      <div style="text-align:center;padding:40px 16px;color:var(--muted)">
-        <div style="font-size:24px;margin-bottom:12px">🎨</div>
-        <div style="font-size:13px;margin-bottom:16px">No themes yet</div>
-        <button class="new-theme-btn" style="width:auto;margin:0 auto" onclick="window._builder.createTheme()">+ Create your first theme</button>
-      </div>
-    `;
-    previewRenderer = null;
+    try {
+      const config = typeof theme.config === 'string' ? JSON.parse(theme.config) : (theme.config || {});
+      const res = await fetch(`${BASE_URL}/api/themes/${LOC_ID}/${themeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), config }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const updated = await res.json();
+      const idx = themes.findIndex(t => t.id === themeId);
+      if (idx >= 0) themes[idx] = updated;
+      renderGallery();
+      showToast('Renamed', 'ok');
+    } catch (e) {
+      showToast('Failed to rename: ' + e.message, 'err');
+    }
   }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRESET MODAL
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function openPresetModal() {
+    const body = $('#preset-body');
+    const grid = document.createElement('div');
+    grid.className = 'preset-grid';
+
+    // Blank option
+    const blank = document.createElement('button');
+    blank.className = 'preset-card';
+    blank.innerHTML = `
+      <div class="preset-swatches">
+        <div style="background:#F4F3F0;border:1.5px dashed #C3BFB5"></div>
+      </div>
+      <div class="preset-name">Blank canvas</div>
+      <div class="preset-desc">Start from defaults</div>
+    `;
+    blank.onclick = () => {
+      closePresetModal();
+      doCreateTheme('New theme', null);
+    };
+    grid.appendChild(blank);
+
+    presets.forEach(p => {
+      const pc = p.previewColors || {};
+      const card = document.createElement('button');
+      card.className = 'preset-card';
+      card.innerHTML = `
+        <div class="preset-swatches">
+          <div style="background:${pc.primary || '#3730A3'}"></div>
+          <div style="background:${pc.background || '#FFF'}"></div>
+          <div style="background:${pc.accent || pc.primary || '#3730A3'}"></div>
+        </div>
+        <div class="preset-name">${escHtml(p.name)}</div>
+        <div class="preset-desc">${escHtml(p.description || '')}</div>
+      `;
+      card.onclick = () => {
+        closePresetModal();
+        doCreateTheme(p.name, p.config);
+      };
+      grid.appendChild(card);
+    });
+
+    body.innerHTML = '';
+    body.appendChild(grid);
+
+    const modal = $('#preset-modal');
+    const backdrop = $('#preset-backdrop');
+    modal.removeAttribute('hidden');
+    backdrop.removeAttribute('hidden');
+    requestAnimationFrame(() => {
+      modal.classList.add('open');
+      backdrop.classList.add('open');
+    });
+  }
+
+  function closePresetModal() {
+    const modal = $('#preset-modal');
+    const backdrop = $('#preset-backdrop');
+    modal.classList.remove('open');
+    backdrop.classList.remove('open');
+    setTimeout(() => {
+      modal.setAttribute('hidden', '');
+      backdrop.setAttribute('hidden', '');
+    }, 300);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // ASSIGNMENTS DRAWER
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function openAssignmentsDrawer() {
+    renderAssignmentsDrawer();
+    const drawer = $('#assignments-drawer');
+    const backdrop = $('#drawer-backdrop');
+    drawer.removeAttribute('hidden');
+    backdrop.removeAttribute('hidden');
+    requestAnimationFrame(() => {
+      drawer.classList.add('open');
+      backdrop.classList.add('open');
+    });
+  }
+
+  function closeAssignmentsDrawer() {
+    const drawer = $('#assignments-drawer');
+    const backdrop = $('#drawer-backdrop');
+    drawer.classList.remove('open');
+    backdrop.classList.remove('open');
+    setTimeout(() => {
+      drawer.setAttribute('hidden', '');
+      backdrop.setAttribute('hidden', '');
+    }, 400);
+  }
+
+  function renderAssignmentsDrawer() {
+    const body = $('#drawer-body');
+    if (calendars.length === 0) {
+      body.innerHTML = `
+        <div style="text-align:center;padding:40px 20px;color:var(--ink-muted)">
+          <div style="font-family:var(--font-serif);font-size:22px;font-style:italic;color:var(--ink);margin-bottom:6px">No calendars</div>
+          <div style="font-size:13px">Connect calendars in GoHighLevel first.</div>
+        </div>
+      `;
+      return;
+    }
+
+    body.innerHTML = '';
+    calendars.forEach(cal => {
+      const assignment = assignments.find(a => a.calendar_id === cal.id);
+      const assignedThemeId = assignment ? assignment.theme_id : '';
+      const embedUrl = assignment ? `${BASE_URL}/embed/${LOC_ID}/${cal.id}` : '';
+
+      const row = document.createElement('div');
+      row.className = 'assignment-row';
+      row.innerHTML = `
+        <div class="assignment-row-head">
+          <div class="assignment-cal-name">${escHtml(cal.name)}</div>
+          <div class="select-wrap assignment-theme-select" style="min-width:180px">
+            <select data-cal-id="${cal.id}" data-cal-name="${escHtml(cal.name)}">
+              <option value="">— No theme —</option>
+              ${themes.map(t => `<option value="${t.id}" ${t.id === assignedThemeId ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        ${embedUrl ? `<div class="assignment-embed-url" title="Click to copy">${escHtml(embedUrl)}</div>` : ''}
+      `;
+
+      const sel = row.querySelector('select');
+      sel.addEventListener('change', async (e) => {
+        const themeId = e.target.value;
+        if (themeId) {
+          await assignTheme(themeId, cal.id, cal.name);
+        } else {
+          const existing = assignments.find(a => a.calendar_id === cal.id);
+          if (existing) await unassignTheme(existing.id);
+        }
+        renderAssignmentsDrawer();
+        renderGallery();
+      });
+
+      const urlEl = row.querySelector('.assignment-embed-url');
+      if (urlEl) urlEl.onclick = () => copyUrl(embedUrl);
+
+      body.appendChild(row);
+    });
+  }
+
+  async function assignTheme(themeId, calendarId, calendarName) {
+    try {
+      const res = await fetch(`${BASE_URL}/api/assignments/${LOC_ID}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ themeId, calendarId, calendarName }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      assignments = assignments.filter(a => a.calendar_id !== calendarId);
+      assignments.push(data);
+      showToast('Theme assigned', 'ok');
+    } catch (e) {
+      showToast('Failed to assign: ' + e.message, 'err');
+    }
+  }
+
+  async function unassignTheme(assignmentId) {
+    try {
+      await fetch(`${BASE_URL}/api/assignments/${LOC_ID}/${assignmentId}`, { method: 'DELETE' });
+      assignments = assignments.filter(a => a.id !== assignmentId);
+      showToast('Assignment removed', 'ok');
+    } catch (e) {
+      showToast('Failed to unassign: ' + e.message, 'err');
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // EDITOR
+  // ═══════════════════════════════════════════════════════════════════════════
 
   function renderEditor() {
     if (!currentConfig) return;
-
     renderEditorTabs();
     renderEditorPanel();
   }
 
   function renderEditorTabs() {
-    const tabs = ['colors', 'typography', 'layout', 'time-slots', 'form', 'components', 'animations', 'custom-css'];
-    const labels = ['Colors', 'Type', 'Layout', 'Slots', 'Form', 'UI', 'Anim', 'CSS'];
+    const tabs = [
+      ['colors',     'Colors'],
+      ['typography', 'Type'],
+      ['layout',     'Layout'],
+      ['time-slots', 'Slots'],
+      ['form',       'Form'],
+      ['components', 'UI'],
+      ['animations', 'Motion'],
+      ['custom-css', 'CSS'],
+    ];
 
-    const container = $('#editor-tabs');
-    container.innerHTML = '';
-
-    tabs.forEach((tab, i) => {
+    const c = $('#editor-tabs');
+    c.innerHTML = '';
+    tabs.forEach(([id, label]) => {
       const btn = document.createElement('button');
-      btn.className = `editor-tab ${tab === activeEditorTab ? 'active' : ''}`;
-      btn.textContent = labels[i];
-      btn.onclick = () => { activeEditorTab = tab; renderEditor(); };
-      container.appendChild(btn);
+      btn.className = `panel-tab ${id === activeEditorTab ? 'active' : ''}`;
+      btn.textContent = label;
+      btn.onclick = () => { activeEditorTab = id; renderEditor(); };
+      c.appendChild(btn);
     });
   }
 
   function renderEditorPanel() {
     const body = $('#editor-body');
     body.innerHTML = '';
-
     switch (activeEditorTab) {
-      case 'colors':      renderColorsPanel(body); break;
-      case 'typography':  renderTypographyPanel(body); break;
-      case 'layout':      renderLayoutPanel(body); break;
-      case 'time-slots':  renderTimeSlotsPanel(body); break;
-      case 'form':        renderFormPanel(body); break;
-      case 'components':  renderComponentsPanel(body); break;
-      case 'animations':  renderAnimationsPanel(body); break;
-      case 'custom-css':  renderCustomCssPanel(body); break;
+      case 'colors':     return renderColorsPanel(body);
+      case 'typography': return renderTypographyPanel(body);
+      case 'layout':     return renderLayoutPanel(body);
+      case 'time-slots': return renderTimeSlotsPanel(body);
+      case 'form':       return renderFormPanel(body);
+      case 'components': return renderComponentsPanel(body);
+      case 'animations': return renderAnimationsPanel(body);
+      case 'custom-css': return renderCustomCssPanel(body);
     }
   }
 
-  // Colors panel
+  // Colors
+
   function renderColorsPanel(body) {
     const c = currentConfig.colors || {};
     const colorFields = [
       ['primary', 'Primary', c.primary],
       ['background', 'Background', c.background],
       ['text', 'Text', c.text],
-      ['textMuted', 'Text muted', c.textMuted],
+      ['textMuted', 'Muted text', c.textMuted],
       ['buttonBg', 'Button', c.buttonBg],
       ['buttonText', 'Button text', c.buttonText],
       ['accent', 'Accent', c.accent],
@@ -338,7 +582,10 @@
 
     const section = document.createElement('div');
     section.className = 'section';
-    section.innerHTML = '<div class="section-label">Colors</div>';
+    section.innerHTML = '<div class="section-label">Color system</div>';
+
+    const grid = document.createElement('div');
+    grid.className = 'color-grid';
 
     colorFields.forEach(([key, label, value]) => {
       const val = value || '#000000';
@@ -350,29 +597,22 @@
           <div class="color-swatch" style="background:${val}">
             <input type="color" value="${val}" data-color-key="${key}">
           </div>
-          <input class="color-hex" value="${val}" maxlength="9" data-hex-key="${key}" placeholder="${val}">
+          <input class="color-hex" value="${val}" maxlength="9" data-hex-key="${key}">
         </div>
       `;
-      section.appendChild(field);
+      grid.appendChild(field);
     });
 
+    section.appendChild(grid);
     body.appendChild(section);
 
-    // Wire up color events
     body.querySelectorAll('[data-color-key]').forEach(input => {
-      input.addEventListener('input', (e) => {
-        const key = e.target.dataset.colorKey;
-        updateColor(key, e.target.value);
-      });
+      input.addEventListener('input', e => updateColor(e.target.dataset.colorKey, e.target.value));
     });
 
     body.querySelectorAll('[data-hex-key]').forEach(input => {
-      input.addEventListener('input', (e) => {
-        const key = e.target.dataset.hexKey;
-        const val = e.target.value;
-        if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
-          updateColor(key, val);
-        }
+      input.addEventListener('input', e => {
+        if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) updateColor(e.target.dataset.hexKey, e.target.value);
       });
     });
   }
@@ -380,17 +620,15 @@
   function updateColor(key, value) {
     if (!currentConfig.colors) currentConfig.colors = {};
     currentConfig.colors[key] = value;
-
-    // Sync swatch + hex
     const swatch = $(`[data-color-key="${key}"]`);
     const hex = $(`[data-hex-key="${key}"]`);
     if (swatch) { swatch.value = value; swatch.parentElement.style.background = value; }
     if (hex) hex.value = value;
-
     updatePreview();
   }
 
-  // Typography panel
+  // Typography
+
   function renderTypographyPanel(body) {
     const t = currentConfig.typography || {};
     body.innerHTML = `
@@ -400,19 +638,20 @@
           <label>Font family</label>
           <div class="select-wrap">
             <select id="ed-fontFamily">
+              <option value="'Plus Jakarta Sans', sans-serif" ${t.fontFamily?.includes('Jakarta') ? 'selected' : ''}>Plus Jakarta Sans</option>
               <option value="'DM Sans', sans-serif" ${t.fontFamily?.includes('DM Sans') ? 'selected' : ''}>DM Sans</option>
               <option value="'Inter', sans-serif" ${t.fontFamily?.includes('Inter') ? 'selected' : ''}>Inter</option>
               <option value="'Poppins', sans-serif" ${t.fontFamily?.includes('Poppins') ? 'selected' : ''}>Poppins</option>
+              <option value="'Instrument Serif', serif" ${t.fontFamily?.includes('Instrument') ? 'selected' : ''}>Instrument Serif</option>
               <option value="'Georgia', serif" ${t.fontFamily?.includes('Georgia') ? 'selected' : ''}>Georgia</option>
-              <option value="'Helvetica Neue', sans-serif" ${t.fontFamily?.includes('Helvetica') ? 'selected' : ''}>Helvetica Neue</option>
-              <option value="system-ui, sans-serif" ${t.fontFamily?.includes('system-ui') ? 'selected' : ''}>System UI</option>
+              <option value="system-ui, sans-serif" ${t.fontFamily?.includes('system-ui') ? 'selected' : ''}>System</option>
             </select>
           </div>
         </div>
         <div class="field">
           <label>Heading size</label>
           <div class="slider-row">
-            <input type="range" id="ed-headingSize" min="14" max="28" value="${parseInt(t.headingSize) || 18}">
+            <input type="range" id="ed-headingSize" min="14" max="32" value="${parseInt(t.headingSize) || 18}">
             <span class="slider-val">${parseInt(t.headingSize) || 18}px</span>
           </div>
         </div>
@@ -424,7 +663,7 @@
           </div>
         </div>
         <div class="field">
-          <label>Font weight</label>
+          <label>Body weight</label>
           <div class="select-wrap">
             <select id="ed-fontWeight">
               <option value="400" ${t.fontWeight === '400' ? 'selected' : ''}>Regular (400)</option>
@@ -446,10 +685,6 @@
       </div>
     `;
 
-    wireUpTypography(body);
-  }
-
-  function wireUpTypography(body) {
     const onChange = () => {
       if (!currentConfig.typography) currentConfig.typography = {};
       currentConfig.typography.fontFamily = body.querySelector('#ed-fontFamily').value;
@@ -461,7 +696,7 @@
     };
 
     body.querySelectorAll('select, input[type="range"]').forEach(el => {
-      el.addEventListener('input', (e) => {
+      el.addEventListener('input', e => {
         const slider = e.target.closest('.slider-row');
         if (slider) slider.querySelector('.slider-val').textContent = e.target.value + 'px';
         onChange();
@@ -469,16 +704,16 @@
     });
   }
 
-  // Layout panel
+  // Layout
+
   function renderLayoutPanel(body) {
     const l = currentConfig.layout || {};
     const stepsOrder = l.stepsOrder || ['calendar', 'time', 'form', 'confirm'];
 
-    // Step flow presets
     const flowPresets = [
-      { id: 'date-time-form',   label: 'Date > Time > Form',     steps: ['calendar', 'time', 'form', 'confirm'] },
-      { id: 'time-date-form',   label: 'Time > Date > Form',     steps: ['time', 'calendar', 'form', 'confirm'] },
-      { id: 'date-time-inline', label: 'Date + Time > Form',     steps: ['calendar+time', 'form', 'confirm'] },
+      { id: 'date-time-form',   label: 'Date → Time → Form',     steps: ['calendar', 'time', 'form', 'confirm'] },
+      { id: 'time-date-form',   label: 'Time → Date → Form',     steps: ['time', 'calendar', 'form', 'confirm'] },
+      { id: 'date-time-inline', label: 'Date + Time → Form',     steps: ['calendar+time', 'form', 'confirm'] },
     ];
 
     const currentFlowId = getFlowPresetId(stepsOrder, flowPresets);
@@ -487,22 +722,20 @@
     flowPresets.forEach(fp => {
       flowHtml += `
         <div class="option-card ${fp.id === currentFlowId ? 'active' : ''}" data-flow="${fp.id}">
-          <div style="font-size:11px;font-weight:500">${fp.label}</div>
+          <div>${fp.label}</div>
         </div>
       `;
     });
 
-    // Custom drag-sortable step list
     let stepListHtml = '';
     stepsOrder.forEach((step, i) => {
-      const label = stepLabel(step);
       stepListHtml += `
         <div class="step-order-item" data-step="${step}">
-          <span class="step-order-handle">&#9776;</span>
-          <span class="step-order-label">${label}</span>
+          <span class="step-order-handle">≡</span>
+          <span class="step-order-label">${stepLabel(step)}</span>
           <div class="step-order-arrows">
-            <button class="theme-card-action" title="Move up" data-move-step="${i}" data-dir="-1">&#8593;</button>
-            <button class="theme-card-action" title="Move down" data-move-step="${i}" data-dir="1">&#8595;</button>
+            <button class="icon-btn" data-move-step="${i}" data-dir="-1" aria-label="Move up">↑</button>
+            <button class="icon-btn" data-move-step="${i}" data-dir="1" aria-label="Move down">↓</button>
           </div>
         </div>
       `;
@@ -510,31 +743,24 @@
 
     body.innerHTML = `
       <div class="section">
-        <div class="section-label">Layout type</div>
+        <div class="section-label">Layout mode</div>
         <div class="option-cards">
-          <div class="option-card ${l.type === 'multi-step' ? 'active' : ''}" data-layout="multi-step">
-            <div class="option-card-icon">&#128209;</div>
-            Multi-step
-          </div>
-          <div class="option-card ${l.type === 'single-page' ? 'active' : ''}" data-layout="single-page">
-            <div class="option-card-icon">&#128195;</div>
-            Single page
-          </div>
-          <div class="option-card ${l.type === 'sidebar' ? 'active' : ''}" data-layout="sidebar">
-            <div class="option-card-icon">&#128208;</div>
-            Sidebar
-          </div>
+          <div class="option-card ${l.type === 'multi-step' || !l.type ? 'active' : ''}" data-layout="multi-step">Multi-step</div>
+          <div class="option-card ${l.type === 'single-page' ? 'active' : ''}" data-layout="single-page">Single page</div>
+          <div class="option-card ${l.type === 'sidebar' ? 'active' : ''}" data-layout="sidebar">Sidebar</div>
         </div>
       </div>
+
       <div class="section">
         <div class="section-label">Booking flow</div>
         <div class="option-cards flow-cards">${flowHtml}</div>
         <div class="step-order-list" style="margin-top:10px">${stepListHtml}</div>
       </div>
+
       <div class="section">
         <div class="section-label">Spacing</div>
         <div class="field">
-          <label>Border radius</label>
+          <label>Corner radius</label>
           <div class="slider-row">
             <input type="range" id="ed-borderRadius" min="0" max="24" value="${currentConfig.spacing?.borderRadius ?? 8}">
             <span class="slider-val">${currentConfig.spacing?.borderRadius ?? 8}px</span>
@@ -555,6 +781,7 @@
           </div>
         </div>
       </div>
+
       <div class="section">
         <div class="section-label">Calendar</div>
         <div class="field">
@@ -569,7 +796,6 @@
       </div>
     `;
 
-    // Layout type cards
     body.querySelectorAll('[data-layout]').forEach(card => {
       card.onclick = () => {
         if (!currentConfig.layout) currentConfig.layout = {};
@@ -580,7 +806,6 @@
       };
     });
 
-    // Flow preset cards
     body.querySelectorAll('[data-flow]').forEach(card => {
       card.onclick = () => {
         const preset = flowPresets.find(p => p.id === card.dataset.flow);
@@ -592,14 +817,12 @@
       };
     });
 
-    // Step reorder buttons
     body.querySelectorAll('[data-move-step]').forEach(btn => {
       btn.onclick = () => {
         const idx = parseInt(btn.dataset.moveStep);
         const dir = parseInt(btn.dataset.dir);
         const steps = currentConfig.layout?.stepsOrder || ['calendar', 'time', 'form', 'confirm'];
         const newIdx = idx + dir;
-        // Don't allow moving confirm away from last position
         if (newIdx < 0 || newIdx >= steps.length) return;
         if (steps[idx] === 'confirm' || steps[newIdx] === 'confirm') return;
         [steps[idx], steps[newIdx]] = [steps[newIdx], steps[idx]];
@@ -610,7 +833,6 @@
       };
     });
 
-    // Sliders
     body.querySelectorAll('input[type="range"]').forEach(el => {
       el.addEventListener('input', (e) => {
         e.target.closest('.slider-row').querySelector('.slider-val').textContent = e.target.value + 'px';
@@ -622,7 +844,6 @@
       });
     });
 
-    // First day
     body.querySelector('#ed-firstDay').addEventListener('change', (e) => {
       if (!currentConfig.calendar) currentConfig.calendar = {};
       currentConfig.calendar.firstDayOfWeek = parseInt(e.target.value);
@@ -632,42 +853,31 @@
 
   function getFlowPresetId(steps, presets) {
     const key = steps.join(',');
-    for (const p of presets) {
-      if (p.steps.join(',') === key) return p.id;
-    }
+    for (const p of presets) if (p.steps.join(',') === key) return p.id;
     return null;
   }
 
   function stepLabel(step) {
-    const labels = {
+    return {
       'calendar': 'Date picker',
       'time': 'Time slots',
       'form': 'Booking form',
       'confirm': 'Confirmation',
       'calendar+time': 'Date + Time',
-    };
-    return labels[step] || step;
+    }[step] || step;
   }
 
-  // Time Slots panel
+  // Time Slots
+
   function renderTimeSlotsPanel(body) {
     const ts = currentConfig.timeSlots || {};
     body.innerHTML = `
       <div class="section">
         <div class="section-label">Slot style</div>
         <div class="option-cards">
-          <div class="option-card ${ts.style === 'pills' || !ts.style ? 'active' : ''}" data-slot-style="pills">
-            <div class="option-card-icon">💊</div>
-            Pills
-          </div>
-          <div class="option-card ${ts.style === 'list' ? 'active' : ''}" data-slot-style="list">
-            <div class="option-card-icon">📋</div>
-            List
-          </div>
-          <div class="option-card ${ts.style === 'grid' ? 'active' : ''}" data-slot-style="grid">
-            <div class="option-card-icon">🔲</div>
-            Grid
-          </div>
+          <div class="option-card ${ts.style === 'pills' || !ts.style ? 'active' : ''}" data-slot-style="pills">Pills</div>
+          <div class="option-card ${ts.style === 'list' ? 'active' : ''}" data-slot-style="list">List</div>
+          <div class="option-card ${ts.style === 'grid' ? 'active' : ''}" data-slot-style="grid">Grid</div>
         </div>
       </div>
       <div class="section">
@@ -697,23 +907,23 @@
     });
   }
 
-  // Form panel
+  // Form
+
   function renderFormPanel(body) {
     const fields = (currentConfig.form && currentConfig.form.fields) || [];
-
     let html = '<div class="section"><div class="section-label">Booking form fields</div><div class="form-fields-list">';
 
     fields.forEach((f, i) => {
       html += `
         <div class="form-field-item">
           <div class="field-info">
-            <div class="field-name">${escHtml(f.label || f.name)} ${f.required ? '<span style="color:var(--danger)">*</span>' : ''}</div>
+            <div class="field-name">${escHtml(f.label || f.name)}${f.required ? ' <span style="color:var(--danger)">*</span>' : ''}</div>
             <div class="field-type">${f.type || 'text'}</div>
           </div>
           <div class="field-actions">
-            <button class="theme-card-action" title="Move up" onclick="window._builder.moveFormField(${i}, -1)">↑</button>
-            <button class="theme-card-action" title="Move down" onclick="window._builder.moveFormField(${i}, 1)">↓</button>
-            <button class="theme-card-action danger" title="Remove" onclick="window._builder.removeFormField(${i})">×</button>
+            <button class="icon-btn" onclick="window._builder.moveFormField(${i}, -1)" aria-label="Up">↑</button>
+            <button class="icon-btn" onclick="window._builder.moveFormField(${i}, 1)" aria-label="Down">↓</button>
+            <button class="icon-btn danger" onclick="window._builder.removeFormField(${i})" aria-label="Remove">×</button>
           </div>
         </div>
       `;
@@ -727,11 +937,10 @@
   }
 
   function addFormField() {
-    const name = prompt('Field name (e.g., "company"):');
+    const name = prompt('Field name (e.g. "company")');
     if (!name) return;
-    const label = prompt('Label:', name.charAt(0).toUpperCase() + name.slice(1));
-    const type = prompt('Type (text, email, tel, textarea, select):', 'text') || 'text';
-
+    const label = prompt('Label', name.charAt(0).toUpperCase() + name.slice(1));
+    const type = prompt('Type (text, email, tel, textarea, select)', 'text') || 'text';
     if (!currentConfig.form) currentConfig.form = { fields: [] };
     currentConfig.form.fields.push({ name, label: label || name, type, required: false, placeholder: '' });
     renderEditor();
@@ -739,26 +948,26 @@
   }
 
   function removeFormField(index) {
-    if (!currentConfig.form || !currentConfig.form.fields) return;
+    if (!currentConfig.form?.fields) return;
     currentConfig.form.fields.splice(index, 1);
     renderEditor();
     updatePreview();
   }
 
   function moveFormField(index, direction) {
-    if (!currentConfig.form || !currentConfig.form.fields) return;
+    if (!currentConfig.form?.fields) return;
     const fields = currentConfig.form.fields;
-    const newIndex = index + direction;
-    if (newIndex < 0 || newIndex >= fields.length) return;
-    [fields[index], fields[newIndex]] = [fields[newIndex], fields[index]];
+    const ni = index + direction;
+    if (ni < 0 || ni >= fields.length) return;
+    [fields[index], fields[ni]] = [fields[ni], fields[index]];
     renderEditor();
     updatePreview();
   }
 
-  // Components panel
+  // Components
+
   function renderComponentsPanel(body) {
     const comp = currentConfig.components || {};
-
     body.innerHTML = `
       <div class="section">
         <div class="section-label">Visibility</div>
@@ -780,13 +989,13 @@
         </div>
       </div>
       <div class="section">
-        <div class="section-label">Text</div>
+        <div class="section-label">Copy</div>
         <div class="field">
           <label>Header text</label>
           <input type="text" id="ed-headerText" value="${escHtml(comp.headerText || 'Book an Appointment')}">
         </div>
         <div class="field">
-          <label>Confirm button text</label>
+          <label>Confirm button</label>
           <input type="text" id="ed-confirmBtn" value="${escHtml(comp.confirmButtonText || 'Confirm Booking')}">
         </div>
         <div class="field">
@@ -796,7 +1005,6 @@
       </div>
     `;
 
-    // Toggles
     body.querySelectorAll('[data-toggle]').forEach(toggle => {
       toggle.onclick = () => {
         toggle.classList.toggle('on');
@@ -806,7 +1014,6 @@
       };
     });
 
-    // Text inputs
     ['ed-headerText', 'ed-confirmBtn', 'ed-successMsg'].forEach(id => {
       const el = body.querySelector(`#${id}`);
       if (el) el.addEventListener('input', () => {
@@ -819,17 +1026,17 @@
     });
   }
 
-  // Animations panel
+  // Animations
+
   function renderAnimationsPanel(body) {
     const a = currentConfig.animations || {};
-
     body.innerHTML = `
       <div class="section">
-        <div class="section-label">Animations</div>
+        <div class="section-label">Motion</div>
         <div class="field">
           <label>Transition speed</label>
           <div class="slider-row">
-            <input type="range" id="ed-transSpeed" min="0" max="5" step="0.1" value="${parseFloat(a.transitionSpeed) || 0.2}">
+            <input type="range" id="ed-transSpeed" min="0" max="1" step="0.05" value="${parseFloat(a.transitionSpeed) || 0.2}">
             <span class="slider-val">${parseFloat(a.transitionSpeed) || 0.2}s</span>
           </div>
         </div>
@@ -837,7 +1044,7 @@
           <label>Step transition</label>
           <div class="select-wrap">
             <select id="ed-stepTrans">
-              <option value="slide-left" ${a.stepTransition === 'slide-left' || !a.stepTransition ? 'selected' : ''}>Slide left</option>
+              <option value="slide-left" ${a.stepTransition === 'slide-left' || !a.stepTransition ? 'selected' : ''}>Slide</option>
               <option value="fade" ${a.stepTransition === 'fade' ? 'selected' : ''}>Fade</option>
               <option value="none" ${a.stepTransition === 'none' ? 'selected' : ''}>None</option>
             </select>
@@ -871,17 +1078,17 @@
     };
   }
 
-  // Custom CSS panel
+  // Custom CSS
+
   function renderCustomCssPanel(body) {
     body.innerHTML = `
       <div class="section">
         <div class="section-label">Custom CSS</div>
         <div class="field">
-          <textarea class="code-input" id="ed-customCss" rows="12" placeholder="/* Override any styles here */&#10;.ct-slot { ... }">${escHtml(currentConfig.customCss || '')}</textarea>
+          <textarea class="code-input" id="ed-customCss" rows="16" placeholder="/* Override any styles here */&#10;.ct-slot { ... }">${escHtml(currentConfig.customCss || '')}</textarea>
         </div>
       </div>
     `;
-
     body.querySelector('#ed-customCss').addEventListener('input', (e) => {
       currentConfig.customCss = e.target.value;
       updatePreview();
@@ -891,120 +1098,15 @@
   // ── Preview ──────────────────────────────────────────────────────────────
 
   function renderPreview() {
-    renderPreviewTabs();
-    const body = $('#preview-body');
-
-    if (activePreviewTab === 'preview') {
-      body.innerHTML = '<div class="preview-frame" id="preview-frame"></div>';
-      const frame = $('#preview-frame');
-      previewRenderer = new CalendarRenderer(frame, currentConfig, { previewMode: true });
-      previewRenderer.init();
-    } else if (activePreviewTab === 'assignments') {
-      body.innerHTML = '<div class="assignment-panel active" id="assignment-panel"></div>';
-      renderAssignments();
-    }
-  }
-
-  function renderPreviewTabs() {
-    const container = $('#preview-tabs');
-    container.innerHTML = '';
-
-    [['preview', 'Live Preview'], ['assignments', 'Assignments']].forEach(([key, label]) => {
-      const btn = document.createElement('button');
-      btn.className = `tab ${key === activePreviewTab ? 'active' : ''}`;
-      btn.textContent = label;
-      btn.onclick = () => { activePreviewTab = key; renderPreview(); };
-      container.appendChild(btn);
-    });
+    const frame = $('#preview-frame');
+    frame.innerHTML = '';
+    frame.className = `preview-frame device-${previewDevice}`;
+    previewRenderer = new CalendarRenderer(frame, currentConfig, { previewMode: true });
+    previewRenderer.init();
   }
 
   function updatePreview() {
-    if (previewRenderer && activePreviewTab === 'preview') {
-      previewRenderer.updateConfig(currentConfig);
-    }
-  }
-
-  // ── Assignments ──────────────────────────────────────────────────────────
-
-  function renderAssignments() {
-    const panel = $('#assignment-panel');
-    if (!panel) return;
-
-    if (calendars.length === 0) {
-      panel.innerHTML = '<div style="text-align:center;color:var(--muted);padding:24px">No calendars found for this location.</div>';
-      return;
-    }
-
-    let html = '<div class="section-label" style="margin-bottom:12px">Assign themes to calendars</div>';
-
-    calendars.forEach(cal => {
-      const assignment = assignments.find(a => a.calendar_id === cal.id);
-      const assignedThemeId = assignment ? assignment.theme_id : '';
-      const embedUrl = assignment ? `${BASE_URL}/embed/${LOC_ID}/${cal.id}` : '';
-
-      html += `
-        <div class="assignment-row">
-          <div class="assignment-cal-name">${escHtml(cal.name)}</div>
-          <div class="select-wrap assignment-theme-select">
-            <select data-cal-id="${cal.id}" data-cal-name="${escHtml(cal.name)}">
-              <option value="">— No theme —</option>
-              ${themes.map(t => `<option value="${t.id}" ${t.id === assignedThemeId ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('')}
-            </select>
-          </div>
-          ${embedUrl ? `<div class="assignment-embed-url" title="Click to copy" onclick="window._builder.copyUrl('${embedUrl}')">${embedUrl}</div>` : ''}
-        </div>
-      `;
-    });
-
-    panel.innerHTML = html;
-
-    // Wire up assignment changes
-    panel.querySelectorAll('[data-cal-id]').forEach(select => {
-      select.addEventListener('change', async (e) => {
-        const calId = e.target.dataset.calId;
-        const calName = e.target.dataset.calName;
-        const themeId = e.target.value;
-
-        if (themeId) {
-          await assignTheme(themeId, calId, calName);
-        } else {
-          // Remove assignment
-          const existing = assignments.find(a => a.calendar_id === calId);
-          if (existing) await unassignTheme(existing.id);
-        }
-
-        renderAssignments();
-        renderThemeList();
-      });
-    });
-  }
-
-  async function assignTheme(themeId, calendarId, calendarName) {
-    try {
-      const res = await fetch(`${BASE_URL}/api/assignments/${LOC_ID}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ themeId, calendarId, calendarName }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      // Update local state
-      assignments = assignments.filter(a => a.calendar_id !== calendarId);
-      assignments.push(data);
-      showToast('Theme assigned', 'ok');
-    } catch (e) {
-      showToast('Failed to assign: ' + e.message, 'err');
-    }
-  }
-
-  async function unassignTheme(assignmentId) {
-    try {
-      await fetch(`${BASE_URL}/api/assignments/${LOC_ID}/${assignmentId}`, { method: 'DELETE' });
-      assignments = assignments.filter(a => a.id !== assignmentId);
-      showToast('Assignment removed', 'ok');
-    } catch (e) {
-      showToast('Failed to unassign: ' + e.message, 'err');
-    }
+    if (previewRenderer) previewRenderer.updateConfig(currentConfig);
   }
 
   // ── Save ─────────────────────────────────────────────────────────────────
@@ -1015,12 +1117,12 @@
 
     const btn = $('#save-btn');
     const lbl = $('#save-label');
+    const status = $('#save-status');
     btn.classList.add('saving');
-    lbl.textContent = 'Saving...';
+    lbl.textContent = 'Saving…';
+    status.textContent = '';
 
-    // Get current name
-    const theme = themes.find(t => t.id === currentThemeId);
-    const name = theme ? theme.name : 'Untitled Theme';
+    const name = ($('#theme-name-input').value || '').trim() || 'Untitled theme';
 
     try {
       const res = await fetch(`${BASE_URL}/api/themes/${LOC_ID}/${currentThemeId}`, {
@@ -1028,50 +1130,21 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, config: currentConfig }),
       });
-
       if (!res.ok) throw new Error(await res.text());
       const updated = await res.json();
 
-      // Update local state
       const idx = themes.findIndex(t => t.id === currentThemeId);
       if (idx >= 0) themes[idx] = updated;
 
       btn.classList.remove('saving');
-      lbl.textContent = 'Saved!';
+      lbl.textContent = 'Save';
+      status.textContent = 'Saved';
+      setTimeout(() => { status.textContent = ''; }, 2500);
       showToast('Theme saved', 'ok');
-
-      setTimeout(() => { lbl.textContent = 'Save theme'; }, 2000);
-      renderThemeList();
     } catch (e) {
       btn.classList.remove('saving');
-      lbl.textContent = 'Save theme';
+      lbl.textContent = 'Save';
       showToast('Save failed: ' + e.message, 'err');
-    }
-  }
-
-  // ── Rename ───────────────────────────────────────────────────────────────
-
-  async function renameTheme(themeId) {
-    const theme = themes.find(t => t.id === themeId);
-    if (!theme) return;
-    const newName = prompt('Rename theme:', theme.name);
-    if (!newName || newName.trim() === '' || newName === theme.name) return;
-
-    try {
-      const config = typeof theme.config === 'string' ? JSON.parse(theme.config) : (theme.config || {});
-      const res = await fetch(`${BASE_URL}/api/themes/${LOC_ID}/${themeId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: newName.trim(), config }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const updated = await res.json();
-      const idx = themes.findIndex(t => t.id === themeId);
-      if (idx >= 0) themes[idx] = updated;
-      renderThemeList();
-      showToast('Theme renamed', 'ok');
-    } catch (e) {
-      showToast('Failed to rename: ' + e.message, 'err');
     }
   }
 
@@ -1083,41 +1156,93 @@
     return div.innerHTML;
   }
 
+  function formatDate(ts) {
+    if (!ts) return 'Recently';
+    const d = new Date(ts * 1000);
+    if (isNaN(d.getTime())) return 'Recently';
+    const now = Date.now();
+    const diff = now - d.getTime();
+    const day = 24 * 60 * 60 * 1000;
+    if (diff < day) return 'Today';
+    if (diff < 2 * day) return 'Yesterday';
+    if (diff < 7 * day) return `${Math.floor(diff / day)} days ago`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  }
+
   let toastTimer;
   function showToast(msg, type = 'ok') {
     const t = $('#toast');
-    const msgEl = t.querySelector('.toast-msg');
-    if (msgEl) msgEl.textContent = msg;
-    else t.textContent = msg;
+    t.querySelector('.toast-msg').textContent = msg;
     t.className = `toast show ${type}`;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
   }
 
   function copyUrl(url) {
-    navigator.clipboard.writeText(url).then(() => showToast('Copied URL', 'ok'));
+    navigator.clipboard.writeText(url).then(() => showToast('URL copied', 'ok'));
   }
 
-  // ── Expose to global for onclick handlers ────────────────────────────────
+  // ── Expose globals for inline handlers ───────────────────────────────────
 
   window._builder = {
-    createTheme,
-    duplicateTheme,
-    deleteTheme,
-    renameTheme,
-    saveTheme,
     addFormField,
     removeFormField,
     moveFormField,
     copyUrl,
   };
 
-  // Wire up topbar save button
+  // ── Wire events ──────────────────────────────────────────────────────────
+
   document.addEventListener('DOMContentLoaded', () => {
+    $('#new-theme-btn').onclick = openPresetModal;
+    $('#empty-new-btn').onclick = openPresetModal;
+    $('#back-btn').onclick = backToGallery;
     $('#save-btn').onclick = saveTheme;
-    $('#new-theme-btn').onclick = () => createTheme();
+    $('#nav-assignments-btn').onclick = openAssignmentsDrawer;
+    $('#editor-assignments-btn').onclick = openAssignmentsDrawer;
+    $('#drawer-close').onclick = closeAssignmentsDrawer;
+    $('#drawer-backdrop').onclick = closeAssignmentsDrawer;
+    $('#preset-close').onclick = closePresetModal;
+    $('#preset-backdrop').onclick = closePresetModal;
+
+    // Theme name input
+    const nameInput = $('#theme-name-input');
+    let nameTimer;
+    nameInput.addEventListener('input', () => {
+      const status = $('#save-status');
+      status.textContent = 'Unsaved changes';
+      clearTimeout(nameTimer);
+      nameTimer = setTimeout(() => { /* autosave on blur only */ }, 500);
+    });
+    nameInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); nameInput.blur(); saveTheme(); }
+      if (e.key === 'Escape') { const t = themes.find(t => t.id === currentThemeId); if (t) nameInput.value = t.name || ''; nameInput.blur(); }
+    });
+
+    // Search
+    $('#search-input').addEventListener('input', (e) => {
+      searchQuery = e.target.value;
+      renderGallery();
+    });
+
+    // Device switch
+    $$('#device-switch .device-btn').forEach(btn => {
+      btn.onclick = () => {
+        previewDevice = btn.dataset.device;
+        $$('#device-switch .device-btn').forEach(b => b.classList.toggle('active', b === btn));
+        const frame = $('#preview-frame');
+        frame.className = `preview-frame device-${previewDevice}`;
+      };
+    });
+
+    // Escape closes modal/drawer
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (!$('#preset-modal').hasAttribute('hidden')) closePresetModal();
+        else if (!$('#assignments-drawer').hasAttribute('hidden')) closeAssignmentsDrawer();
+      }
+    });
   });
 
-  // Boot
   boot();
 })();
