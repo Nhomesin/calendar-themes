@@ -574,6 +574,11 @@ class CalendarRenderer {
 
   // ── Helpers ─────────────────────────────────────────────────────────────
 
+  getPreviewDate() {
+    const today = new Date();
+    return this.dateStr(today.getFullYear(), today.getMonth(), today.getDate());
+  }
+
   dateStr(y, m, d) {
     return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
   }
