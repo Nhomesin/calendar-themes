@@ -17,13 +17,18 @@
   --mono:      'DM Mono', monospace;
 }
 
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
 body {
   font-family: 'DM Sans', sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 13px;
   min-height: 100vh;
-  overflow-x: hidden;
+  overflow: auto;
 }
 
 /* ── Shell Layout: 3-column ──────────────────────────────────────────────── */
@@ -31,7 +36,8 @@ body {
 .shell {
   display: grid;
   grid-template-columns: 200px 280px 1fr;
-  grid-template-rows: 48px 1fr;
+  grid-template-rows: 48px minmax(0, 1fr);
+  min-height: 100vh;
   height: 100vh;
 }
 

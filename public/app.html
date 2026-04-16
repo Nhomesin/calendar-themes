@@ -80,5 +80,22 @@
 <script src="/js/calendar-renderer.js"></script>
 <script src="/js/builder-app.js"></script>
 
+<!-- Tell GHL parent frame our height so the iframe resizes -->
+<script>
+(function() {
+  function postHeight() {
+    var h = document.documentElement.scrollHeight;
+    window.parent.postMessage({ type: 'resize', height: h }, '*');
+    // GHL also listens for this format
+    window.parent.postMessage(JSON.stringify({ action: 'setHeight', height: h }), '*');
+  }
+  // Post on load, after fonts render, and on any resize
+  window.addEventListener('load', postHeight);
+  window.addEventListener('resize', postHeight);
+  // Periodic check for dynamic content changes
+  setInterval(postHeight, 1000);
+})();
+</script>
+
 </body>
 </html>
