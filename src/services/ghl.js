@@ -27,23 +27,44 @@ async function getLocation(accessToken, locationId) {
   return res.data?.location || null;
 }
 
-// Push compiled CSS into the calendar's widgetCustomization.customCss field.
-// GHL applies this CSS inside the widget itself — solving the iframe styling problem.
-async function pushCssToCalendar(accessToken, calendarId, css) {
+async function getCalendar(accessToken, calendarId) {
   const client = ghlClient(accessToken);
+  const res = await client.get(`/calendars/${calendarId}`);
+  return res.data?.calendar || res.data || null;
+}
+
+// Push theme to a calendar using GHL's native widgetCustomization fields.
+// This works with the Neo widget and is the correct API approach.
+async function pushThemeToCalendar(accessToken, calendarId, theme) {
+  const client = ghlClient(accessToken);
+
+  // First fetch the calendar to preserve existing settings
+  let existing = {};
   try {
-    const res = await client.put(`/calendars/${calendarId}`, {
-      widgetCustomization: {
-        customCss: css,
-      },
-    });
+    const cal = await getCalendar(accessToken, calendarId);
+    existing = cal?.widgetCustomization || {};
+  } catch (_) {}
+
+  const payload = {
+    widgetCustomization: {
+      ...existing,
+      // GHL's native color fields (Neo widget)
+      primaryColor:   theme.primary_color,
+      bgColor:        theme.bg_color,
+      // Button text label (optional)
+      ...(existing.buttonText ? {} : { buttonText: 'Book Appointment' }),
+    },
+  };
+
+  try {
+    const res = await client.put(`/calendars/${calendarId}`, payload);
     return { ok: true, data: res.data };
   } catch (err) {
     const status = err?.response?.status;
     const detail = err?.response?.data;
-    console.error(`[GHL] pushCssToCalendar failed (${status}):`, JSON.stringify(detail));
+    console.error(`[GHL] pushThemeToCalendar failed for ${calendarId} (${status}):`, JSON.stringify(detail));
     return { ok: false, status, detail };
   }
 }
 
-module.exports = { getCalendars, getLocation, pushCssToCalendar };
+module.exports = { getCalendars, getCalendar, getLocation, pushThemeToCalendar };
