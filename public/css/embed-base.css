@@ -54,8 +54,10 @@ html, body {
   flex-direction: column;
 }
 
-#ct-app.layout-sidebar {
-  max-width: 720px;
+#ct-app.layout-sidebar,
+#ct-app.layout-single-page,
+#ct-app.flow-combined {
+  max-width: 760px;
 }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
@@ -540,13 +542,19 @@ html, body {
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
-@media (max-width: 500px) {
-  #ct-app { padding: 12px; }
-  .ct-slots-grid.style-pills { grid-template-columns: repeat(2, 1fr); }
+/* Tablet and below — stack two-column layouts */
+@media (max-width: 640px) {
   .layout-sidebar .ct-main {
     grid-template-columns: 1fr;
   }
   .ct-combined {
     grid-template-columns: 1fr;
   }
+  .ct-combined-time { max-height: none; }
+}
+
+/* Mobile — tighten spacing, drop slot columns */
+@media (max-width: 500px) {
+  #ct-app { padding: 12px; }
+  .ct-slots-grid.style-pills { grid-template-columns: repeat(2, 1fr); }
 }

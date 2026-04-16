@@ -40,16 +40,12 @@
 /* ── App Shell ───────────────────────────────────────────────────────────── */
 
 .preview-frame #ct-app {
-  max-width: 480px;
+  max-width: 100%;
   margin: 0 auto;
   padding: var(--ct-padding);
   display: flex;
   flex-direction: column;
   background: var(--ct-bg);
-}
-
-.preview-frame #ct-app.layout-sidebar {
-  max-width: 720px;
 }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
@@ -480,8 +476,21 @@
   overflow-y: auto;
 }
 
-@media (max-width: 500px) {
-  .preview-frame .ct-combined {
+/* Stack when the frame itself is narrow (mobile device toggle) */
+.preview-frame.device-mobile .ct-combined,
+.preview-frame.device-mobile .layout-sidebar .ct-main {
+  grid-template-columns: 1fr;
+}
+
+.preview-frame.device-mobile .ct-combined-time {
+  max-height: none;
+}
+
+/* Also stack when the whole builder is on mobile */
+@media (max-width: 640px) {
+  .preview-frame .ct-combined,
+  .preview-frame .layout-sidebar .ct-main {
     grid-template-columns: 1fr;
   }
+  .preview-frame .ct-combined-time { max-height: none; }
 }

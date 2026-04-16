@@ -109,11 +109,17 @@ class CalendarRenderer {
   render() {
     const layout = (this.config.layout && this.config.layout.type) || 'multi-step';
     const comp = this.config.components || {};
+    const hasCombined = this.steps.includes('calendar+time');
 
     this.container.innerHTML = '';
 
     // Create inner wrapper — never clobber the container's own class/id
-    const app = el('div', layout === 'sidebar' ? 'layout-sidebar' : '');
+    const classes = [];
+    if (layout === 'sidebar')     classes.push('layout-sidebar');
+    if (layout === 'single-page') classes.push('layout-single-page');
+    if (hasCombined)              classes.push('flow-combined');
+
+    const app = el('div', classes.join(' '));
     app.id = 'ct-app';
 
     // Header
