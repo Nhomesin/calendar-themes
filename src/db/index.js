@@ -1,7 +1,11 @@
 const path = require('path');
 const fs = require('fs');
 
-const DATA_DIR = path.join(__dirname, '../../data');
+// On Railway, use the persistent volume mount at /app/data
+// Locally, fall back to the project's data/ directory
+const DATA_DIR = process.env.RAILWAY_VOLUME_MOUNT_PATH
+  ? path.join(process.env.RAILWAY_VOLUME_MOUNT_PATH)
+  : path.join(__dirname, '../../data');
 const DB_PATH = path.join(DATA_DIR, 'caltheme.db');
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
