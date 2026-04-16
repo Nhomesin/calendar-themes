@@ -130,10 +130,10 @@
   function showPresetPicker() {
     // Create modal overlay
     const overlay = document.createElement('div');
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:200;display:flex;align-items:center;justify-content:center;';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.25);backdrop-filter:blur(4px);z-index:200;display:flex;align-items:center;justify-content:center;';
 
     const modal = document.createElement('div');
-    modal.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto;';
+    modal.style.cssText = 'background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:28px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.15);';
 
     let html = '<div style="font-size:15px;font-weight:600;margin-bottom:4px;">Choose a starter theme</div>';
     html += '<div style="font-size:12px;color:var(--muted);margin-bottom:16px;">Pick a preset or start from scratch.</div>';
@@ -1067,7 +1067,9 @@
   let toastTimer;
   function showToast(msg, type = 'ok') {
     const t = $('#toast');
-    t.textContent = msg;
+    const msgEl = t.querySelector('.toast-msg');
+    if (msgEl) msgEl.textContent = msg;
+    else t.textContent = msg;
     t.className = `toast show ${type}`;
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
