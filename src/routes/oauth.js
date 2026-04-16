@@ -23,7 +23,6 @@ router.get('/install', (req, res) => {
       'calendars.readonly',
       'calendars.write',
       'locations.readonly',
-      'oauth.write',
     ].join(' '),
   });
 
