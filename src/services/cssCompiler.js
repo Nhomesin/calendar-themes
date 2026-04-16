@@ -1,11 +1,10 @@
 /**
- * Compiles a stored theme config object into a CSS string
- * targeting GHL calendar widget class names.
+ * Compiles a stored theme config into CSS that targets
+ * GHL calendar widget internals.
  *
- * Usage:
- *   const css = compileTheme(themeRow);
- *   res.setHeader('Content-Type', 'text/css');
- *   res.send(css);
+ * These class names are from GHL's live widget DOM as of 2025.
+ * GHL renders the booking widget as a Vue/React app — we target
+ * the stable class prefixes and CSS custom properties it exposes.
  */
 function compileTheme(theme) {
   const {
@@ -22,137 +21,145 @@ function compileTheme(theme) {
   const r = parseInt(border_radius, 10) || 8;
 
   return `
-/* ── CalTheme — generated, do not edit manually ── */
+/* CalTheme — injected via API */
 
-/* CSS variables — available to all child elements */
+/* ── CSS variables ── */
 :root {
-  --ct-primary:       ${primary_color};
-  --ct-bg:            ${bg_color};
-  --ct-text:          ${text_color};
-  --ct-btn:           ${button_color};
-  --ct-btn-text:      ${button_text};
-  --ct-font:          ${font_family};
-  --ct-radius:        ${r}px;
+  --ct-primary:   ${primary_color};
+  --ct-bg:        ${bg_color};
+  --ct-text:      ${text_color};
+  --ct-btn:       ${button_color};
+  --ct-btn-text:  ${button_text};
+  --ct-font:      ${font_family};
+  --ct-radius:    ${r}px;
 }
 
-/* Wrapper page */
-body, html {
-  background-color: var(--ct-bg) !important;
-  font-family: var(--ct-font) !important;
-  color: var(--ct-text) !important;
+/* ── Page / wrapper ── */
+body, html, #app, #booking-widget-app, .hl-page-wrap {
+  background-color: ${bg_color} !important;
+  font-family: ${font_family} !important;
+  color: ${text_color} !important;
 }
 
-/* ── GHL Calendar Widget class overrides ── */
-
-/* Main container */
-.calendar-widget-container,
-.booking-widget-container,
-[class*="calendar-widget"],
-[class*="booking-widget"] {
-  background-color: var(--ct-bg) !important;
-  font-family: var(--ct-font) !important;
-  color: var(--ct-text) !important;
-  border-radius: var(--ct-radius) !important;
-}
-
-/* Date picker header */
+/* ── Calendar header (month + nav) ── */
+.c-calendar-header,
 .calendar-header,
-[class*="cal-header"],
-[class*="month-header"] {
-  background-color: var(--ct-primary) !important;
-  color: #fff !important;
-  border-radius: var(--ct-radius) var(--ct-radius) 0 0 !important;
+[class*="calendar-header"],
+[class*="month-selector"] {
+  background-color: ${primary_color} !important;
+  color: #ffffff !important;
+  border-radius: ${r}px ${r}px 0 0 !important;
 }
 
-/* Selected day */
-.day-selected,
-[class*="day-selected"],
+/* ── Navigation arrows ── */
+.c-calendar-header button,
+[class*="calendar-header"] button,
+[class*="nav-button"],
+[class*="prev-btn"],
+[class*="next-btn"] {
+  color: #ffffff !important;
+  background: rgba(255,255,255,0.15) !important;
+  border-radius: ${Math.round(r * 0.6)}px !important;
+}
+
+/* ── Day grid ── */
+.c-day-wrap,
+[class*="day-wrap"],
+[class*="calendar-day"] {
+  font-family: ${font_family} !important;
+  color: ${text_color} !important;
+}
+
+/* ── Selected day ── */
+.c-day-wrap.active,
+[class*="day-wrap"].active,
+[class*="day--selected"],
 [class*="selected-day"],
 .rdp-day_selected {
-  background-color: var(--ct-primary) !important;
-  color: #fff !important;
-  border-radius: calc(var(--ct-radius) / 2) !important;
+  background-color: ${primary_color} !important;
+  color: #ffffff !important;
+  border-radius: ${Math.round(r * 0.6)}px !important;
 }
 
-/* Today indicator */
-.day-today,
-[class*="day-today"],
-.rdp-day_today {
-  border: 2px solid var(--ct-primary) !important;
-  border-radius: calc(var(--ct-radius) / 2) !important;
+/* ── Today ── */
+.c-day-wrap.today,
+[class*="day--today"],
+.rdp-day_today:not(.rdp-day_selected) {
+  border: 2px solid ${primary_color} !important;
+  border-radius: ${Math.round(r * 0.6)}px !important;
+  color: ${primary_color} !important;
 }
 
-/* Available time slots */
-.time-slot,
+/* ── Time slots ── */
+.c-time-slot,
 [class*="time-slot"],
-[class*="slot-available"] {
-  border: 1px solid var(--ct-primary) !important;
-  color: var(--ct-primary) !important;
-  border-radius: calc(var(--ct-radius) / 2) !important;
-  transition: background-color 0.15s, color 0.15s;
+[class*="slot-item"],
+[class*="time-item"] {
+  border: 1.5px solid ${primary_color} !important;
+  color: ${primary_color} !important;
+  border-radius: ${Math.round(r * 0.6)}px !important;
+  background: transparent !important;
+  font-family: ${font_family} !important;
+  transition: background 0.15s, color 0.15s !important;
 }
 
-.time-slot:hover,
-[class*="time-slot"]:hover {
-  background-color: var(--ct-primary) !important;
-  color: #fff !important;
+.c-time-slot:hover,
+[class*="time-slot"]:hover,
+[class*="slot-item"]:hover,
+[class*="time-item"].active,
+[class*="time-item--selected"] {
+  background-color: ${primary_color} !important;
+  color: #ffffff !important;
 }
 
-/* Primary CTA button */
+/* ── CTA / submit button ── */
 button[type="submit"],
-.btn-primary,
-[class*="btn-primary"],
+.c-submit-btn,
 [class*="submit-btn"],
 [class*="confirm-btn"],
-[class*="book-btn"] {
-  background-color: var(--ct-btn) !important;
-  color: var(--ct-btn-text) !important;
-  border-color: var(--ct-btn) !important;
-  border-radius: var(--ct-radius) !important;
-  font-family: var(--ct-font) !important;
+[class*="cta-btn"],
+[class*="book-btn"],
+[class*="next-btn"]:not([class*="calendar"]):not([class*="nav"]) {
+  background-color: ${button_color} !important;
+  color: ${button_text} !important;
+  border-color: ${button_color} !important;
+  border-radius: ${r}px !important;
+  font-family: ${font_family} !important;
 }
 
 button[type="submit"]:hover,
-.btn-primary:hover {
-  filter: brightness(0.92);
+[class*="submit-btn"]:hover {
+  filter: brightness(0.9) !important;
 }
 
-/* Form inputs */
+/* ── Form inputs ── */
 input[type="text"],
 input[type="email"],
 input[type="tel"],
-textarea,
-select {
-  border-radius: calc(var(--ct-radius) / 2) !important;
-  border-color: color-mix(in srgb, var(--ct-primary) 40%, transparent) !important;
-  font-family: var(--ct-font) !important;
-  color: var(--ct-text) !important;
-  background-color: var(--ct-bg) !important;
+input[type="number"],
+textarea, select {
+  border-radius: ${Math.round(r * 0.6)}px !important;
+  border-color: ${primary_color}66 !important;
+  font-family: ${font_family} !important;
+  color: ${text_color} !important;
+  background-color: ${bg_color} !important;
 }
 
-input:focus,
-textarea:focus,
-select:focus {
-  outline-color: var(--ct-primary) !important;
-  border-color: var(--ct-primary) !important;
+input:focus, textarea:focus, select:focus {
+  outline-color: ${primary_color} !important;
+  border-color: ${primary_color} !important;
+  box-shadow: 0 0 0 2px ${primary_color}33 !important;
 }
 
-/* Navigation arrows */
-[class*="nav-btn"],
-[class*="prev-month"],
-[class*="next-month"],
-.rdp-nav_button {
-  color: var(--ct-primary) !important;
+/* ── Step indicator / progress ── */
+[class*="step-indicator"] .active,
+[class*="progress-step"].active,
+[class*="stepper"] .active {
+  background-color: ${primary_color} !important;
+  color: #ffffff !important;
 }
 
-/* Progress / step indicator */
-[class*="step-active"],
-[class*="progress-active"] {
-  background-color: var(--ct-primary) !important;
-  color: #fff !important;
-}
-
-/* ── Custom CSS passthrough (user-authored, always last) ── */
+/* ── Custom CSS passthrough ── */
 ${custom_css}
 `.trim();
 }

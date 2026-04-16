@@ -1,7 +1,7 @@
 const axios = require('axios');
 
-const GHL_API_BASE = process.env.GHL_API_BASE || 'https://services.leadconnectorhq.com';
-const API_VERSION = '2021-07-28';
+const GHL_API_BASE = 'https://services.leadconnectorhq.com';
+const API_VERSION  = '2021-07-28';
 
 function ghlClient(accessToken) {
   return axios.create({
@@ -10,6 +10,7 @@ function ghlClient(accessToken) {
       Authorization: `Bearer ${accessToken}`,
       Version: API_VERSION,
       'Content-Type': 'application/json',
+      Accept: 'application/json',
     },
   });
 }
@@ -26,13 +27,23 @@ async function getLocation(accessToken, locationId) {
   return res.data?.location || null;
 }
 
-async function updateCalendarSettings(accessToken, calendarId, customCss) {
+// Push compiled CSS into the calendar's widgetCustomization.customCss field.
+// GHL applies this CSS inside the widget itself — solving the iframe styling problem.
+async function pushCssToCalendar(accessToken, calendarId, css) {
   const client = ghlClient(accessToken);
-  const res = await client.patch(`/calendars/${calendarId}`, {
-    widgetSlug: undefined,
-    customCss,
-  });
-  return res.data;
+  try {
+    const res = await client.put(`/calendars/${calendarId}`, {
+      widgetCustomization: {
+        customCss: css,
+      },
+    });
+    return { ok: true, data: res.data };
+  } catch (err) {
+    const status = err?.response?.status;
+    const detail = err?.response?.data;
+    console.error(`[GHL] pushCssToCalendar failed (${status}):`, JSON.stringify(detail));
+    return { ok: false, status, detail };
+  }
 }
 
-module.exports = { getCalendars, getLocation, updateCalendarSettings };
+module.exports = { getCalendars, getLocation, pushCssToCalendar };
