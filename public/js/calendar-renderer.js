@@ -109,8 +109,10 @@ class CalendarRenderer {
     const comp = this.config.components || {};
 
     this.container.innerHTML = '';
-    this.container.className = layout === 'sidebar' ? 'layout-sidebar' : '';
-    this.container.id = 'ct-app';
+
+    // Create inner wrapper — never clobber the container's own class/id
+    const app = el('div', layout === 'sidebar' ? 'layout-sidebar' : '');
+    app.id = 'ct-app';
 
     // Header
     if (comp.showHeader !== false) {
@@ -119,7 +121,7 @@ class CalendarRenderer {
       const title = el('span', 'ct-header-title');
       title.textContent = comp.headerText || 'Book an Appointment';
       header.appendChild(title);
-      this.container.appendChild(header);
+      app.appendChild(header);
     }
 
     // Progress bar
@@ -131,7 +133,7 @@ class CalendarRenderer {
         progress.appendChild(step);
       });
       this.els.progress = progress;
-      this.container.appendChild(progress);
+      app.appendChild(progress);
     }
 
     // Main
@@ -154,21 +156,23 @@ class CalendarRenderer {
       main.appendChild(section);
     });
 
-    this.container.appendChild(main);
+    app.appendChild(main);
 
     // Powered by
     if (comp.showPoweredBy !== false) {
       const powered = el('div', 'ct-powered');
       powered.textContent = 'Powered by CalTheme';
-      this.container.appendChild(powered);
+      app.appendChild(powered);
     }
 
     // Timezone
     if (comp.showTimezone !== false) {
       const tz = el('div', 'ct-timezone');
       tz.textContent = this.timezone.replace(/_/g, ' ');
-      this.container.appendChild(tz);
+      app.appendChild(tz);
     }
+
+    this.container.appendChild(app);
   }
 
   renderStep(container, stepName) {

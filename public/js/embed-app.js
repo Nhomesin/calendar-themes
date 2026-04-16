@@ -13,7 +13,7 @@
   const locationId = typeof SERVER_LOCATION_ID !== 'undefined' ? SERVER_LOCATION_ID : '';
   const themeConfig = typeof SERVER_THEME_CONFIG !== 'undefined' ? SERVER_THEME_CONFIG : {};
 
-  const container = document.getElementById('ct-app');
+  const container = document.getElementById('ct-root');
 
   if (!calendarId || !locationId) {
     container.innerHTML = `
