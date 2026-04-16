@@ -58,33 +58,27 @@ app.get('/embed/:locationId/:calendarId', (req, res) => {
   const { locationId, calendarId } = req.params;
   const name = req.query.name || 'Book an appointment';
 
-  // Load theme (falls back to defaults if not saved yet)
   const theme = themeQueries.get(locationId);
   const css   = compileTheme(theme);
 
-  // Extract just the :root block to inject into the HTML
-  const rootMatch = css.match(/:root\s*\{[^}]+\}/);
+  // Extract just the :root block to inject
+  const rootMatch = css.match(/:root[\s\S]*?\{[\s\S]*?\}/);
   const rootCss   = rootMatch ? rootMatch[0] : '';
 
-  // Read embed template and inject theme + query params
   const fs       = require('fs');
   const tmplPath = require('path').join(__dirname, '../public/embed.html');
-
   let html = fs.readFileSync(tmplPath, 'utf8');
 
-  // Replace the CSS placeholder with compiled root vars
+  // Inject theme CSS
   html = html.replace('/* THEME_PLACEHOLDER */', rootCss);
 
-  // Inject locationId, calendarId, name into the query string on the iframe
+  // Inject calendarId, locationId, name directly as JS variables
+  // so the client never needs to parse params — values come from the server
   html = html.replace(
-    "const GHL_EMBED  = `https://api.leadconnectorhq.com/widget/booking/${calendarId}`;",
-    `const GHL_EMBED  = \`https://api.leadconnectorhq.com/widget/booking/${calendarId}\`;`
-  );
-
-  // Pass name param through
-  html = html.replace(
-    "params.get('name') || 'Book an appointment'",
-    `'${name.replace(/'/g, "\'")}'`
+    '/* SERVER_VARS_PLACEHOLDER */',
+    `var SERVER_CALENDAR_ID = ${JSON.stringify(calendarId)};
+     var SERVER_LOCATION_ID = ${JSON.stringify(locationId)};
+     var SERVER_NAME        = ${JSON.stringify(name)};`
   );
 
   res.setHeader('Content-Type', 'text/html');

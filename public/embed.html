@@ -173,9 +173,17 @@
 </div>
 
 <script>
+  /* SERVER_VARS_PLACEHOLDER */
+
+  // Use server-injected vars (set above), fall back to query params for direct access
   const params     = new URLSearchParams(location.search);
-  const locationId = params.get('locationId') || '';
-  const calendarId = params.get('calendarId') || '';
+  const calendarId = (typeof SERVER_CALENDAR_ID !== 'undefined' ? SERVER_CALENDAR_ID : null)
+                     || params.get('calendarId') || '';
+  const locationId = (typeof SERVER_LOCATION_ID !== 'undefined' ? SERVER_LOCATION_ID : null)
+                     || params.get('locationId') || '';
+  const bookingName = (typeof SERVER_NAME !== 'undefined' ? SERVER_NAME : null)
+                     || params.get('name') || 'Book an appointment';
+
   const iframe     = document.getElementById('cal-iframe');
   const ring       = document.getElementById('loading-ring');
   const errState   = document.getElementById('error-state');
@@ -188,7 +196,7 @@
     showError('No calendar specified in this link.');
   } else {
     iframe.src = GHL_EMBED;
-    brandName.textContent = params.get('name') || 'Book an appointment';
+    brandName.textContent = bookingName;
 
     iframe.addEventListener('load', () => {
       iframe.classList.add('loaded');
