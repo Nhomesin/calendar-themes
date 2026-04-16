@@ -22,12 +22,25 @@ const PORT = process.env.PORT || 3000;
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({
-  origin: [process.env.APP_BASE_URL, /\.railway\.app$/].filter(Boolean),
+  origin: [
+    process.env.APP_BASE_URL,
+    /\.railway\.app$/,
+    /\.gohighlevel\.com$/,
+    /\.leadconnectorhq\.com$/,
+  ].filter(Boolean),
   credentials: true,
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+
+// Allow embedding in GHL iframes
+app.use((req, res, next) => {
+  res.removeHeader('X-Frame-Options');
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://*.gohighlevel.com https://*.leadconnectorhq.com");
+  next();
+});
+
 app.use(express.static(path.join(__dirname, '../public')));
 
 // ── OAuth + Webhooks ──────────────────────────────────────────────────────────
