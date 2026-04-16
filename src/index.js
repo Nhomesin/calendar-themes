@@ -52,6 +52,45 @@ app.get('/theme.css', (req, res) => {
   res.send(css);
 });
 
+// ── Embed page — themed calendar booking ─────────────────────────────────────
+// GET /embed/:locationId/:calendarId
+app.get('/embed/:locationId/:calendarId', (req, res) => {
+  const { locationId, calendarId } = req.params;
+  const name = req.query.name || 'Book an appointment';
+
+  // Load theme (falls back to defaults if not saved yet)
+  const theme = themeQueries.get(locationId);
+  const css   = compileTheme(theme);
+
+  // Extract just the :root block to inject into the HTML
+  const rootMatch = css.match(/:root\s*\{[^}]+\}/);
+  const rootCss   = rootMatch ? rootMatch[0] : '';
+
+  // Read embed template and inject theme + query params
+  const fs       = require('fs');
+  const tmplPath = require('path').join(__dirname, '../public/embed.html');
+
+  let html = fs.readFileSync(tmplPath, 'utf8');
+
+  // Replace the CSS placeholder with compiled root vars
+  html = html.replace('/* THEME_PLACEHOLDER */', rootCss);
+
+  // Inject locationId, calendarId, name into the query string on the iframe
+  html = html.replace(
+    "const GHL_EMBED  = `https://api.leadconnectorhq.com/widget/booking/${calendarId}`;",
+    `const GHL_EMBED  = \`https://api.leadconnectorhq.com/widget/booking/${calendarId}\`;`
+  );
+
+  // Pass name param through
+  html = html.replace(
+    "params.get('name') || 'Book an appointment'",
+    `'${name.replace(/'/g, "\'")}'`
+  );
+
+  res.setHeader('Content-Type', 'text/html');
+  res.send(html);
+});
+
 // ── Health check ──────────────────────────────────────────────────────────────
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', app: 'CalTheme', ts: new Date().toISOString() });
