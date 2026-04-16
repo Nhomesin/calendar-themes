@@ -11,13 +11,13 @@ async function requireLocation(req, res, next) {
     return res.status(400).json({ error: 'locationId is required' });
   }
 
-  const location = locationQueries.get.get(locationId);
+  // locationQueries.get() is a function in our sql.js wrapper
+  const location = locationQueries.get(locationId);
 
   if (!location) {
     return res.status(404).json({ error: 'Location not found. App may not be installed.' });
   }
 
-  // Refresh token if it expires within the next 5 minutes
   const expiresIn = location.token_expires_at - Math.floor(Date.now() / 1000);
 
   if (expiresIn < 300) {
