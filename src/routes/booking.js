@@ -12,14 +12,35 @@ router.get('/slots/:locationId/:calendarId', requireLocation, async (req, res) =
   }
 
   try {
-    const slots = await getFreeSlots(
+    const raw = await getFreeSlots(
       req.accessToken,
       calendarId,
       startDate,
       endDate,
       timezone || 'America/New_York'
     );
-    res.json(slots);
+    console.log('[Slots] Raw GHL response keys:', JSON.stringify(Object.keys(raw || {})));
+    console.log('[Slots] Sample:', JSON.stringify(raw).slice(0, 500));
+
+    // Normalize GHL response into { "YYYY-MM-DD": ["iso1","iso2",...] }
+    const normalized = {};
+    // GHL may return { "YYYY-MM-DD": { slots: [...] } } or { slots: { ... } }
+    const slotsObj = raw || {};
+    const dateMap = slotsObj.slots || slotsObj;
+
+    if (dateMap && typeof dateMap === 'object' && !Array.isArray(dateMap)) {
+      for (const [key, val] of Object.entries(dateMap)) {
+        // Skip non-date keys
+        if (!/^\d{4}-\d{2}-\d{2}/.test(key)) continue;
+        if (Array.isArray(val)) {
+          normalized[key] = val;
+        } else if (val && Array.isArray(val.slots)) {
+          normalized[key] = val.slots;
+        }
+      }
+    }
+
+    res.json({ slots: normalized });
   } catch (err) {
     console.error('[Slots] Fetch error:', err?.response?.data || err.message);
     res.status(502).json({ error: 'Failed to fetch available slots from GHL.' });

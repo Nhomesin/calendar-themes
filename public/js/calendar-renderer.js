@@ -38,10 +38,12 @@ class CalendarRenderer {
 
   init() {
     this.applyThemeVars();
-    this.render();
     if (!this.previewMode) {
+      this.isLoading = true; // prevent disabling days before slots arrive
+      this.render();
       this.fetchSlotsForMonth(this.currentYear, this.currentMonth);
     } else {
+      this.render();
       this.loadMockSlots();
     }
   }
@@ -587,12 +589,12 @@ class CalendarRenderer {
         ? await this.onFetchSlots(startDate, endDate)
         : {};
 
-      // GHL returns { YYYY-MM-DD: { slots: ['2026-04-16T09:00:00-04:00', ...] } }
-      // or { slots: { 'YYYY-MM-DD': [...] } } — normalize both
+      // Server returns { slots: { 'YYYY-MM-DD': ['iso1','iso2',...] } }
       const normalized = {};
       const slotsObj = data.slots || data;
       if (slotsObj && typeof slotsObj === 'object') {
         for (const [dateKey, val] of Object.entries(slotsObj)) {
+          if (!/^\d{4}-\d{2}-\d{2}/.test(dateKey)) continue;
           if (Array.isArray(val)) {
             normalized[dateKey] = val;
           } else if (val && Array.isArray(val.slots)) {
@@ -600,6 +602,7 @@ class CalendarRenderer {
           }
         }
       }
+      console.log('[CalRenderer] Normalized slots:', Object.keys(normalized).length, 'days');
 
       this.slotCache.set(key, { data: normalized, ts: Date.now() });
       this.availableSlots = { ...this.availableSlots, ...normalized };
