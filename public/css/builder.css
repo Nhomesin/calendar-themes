@@ -49,6 +49,7 @@ body {
   overflow: auto;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  margin-top: -16px;
 }
 
 /* ── Shell Layout ────────────────────────────────────────────────────────── */
