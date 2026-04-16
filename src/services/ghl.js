@@ -1,7 +1,7 @@
 const axios = require('axios');
 
 const GHL_API_BASE = 'https://services.leadconnectorhq.com';
-const API_VERSION  = '2021-04-15';
+const API_VERSION  = '2021-07-28';
 
 function ghlClient(accessToken) {
   return axios.create({
@@ -33,11 +33,10 @@ async function getCalendar(accessToken, calendarId) {
   return res.data?.calendar || res.data || null;
 }
 
-async function getFreeSlots(accessToken, calendarId, startDate, endDate, timezone) {
+async function getFreeSlots(accessToken, calendarId, locationId, startDate, endDate, timezone) {
   const client = ghlClient(accessToken);
-  // GHL v2 free-slots endpoint uses query params, not path
-  const res = await client.get('/calendars/events/free-slots', {
-    params: { calendarId, startDate, endDate, timezone },
+  const res = await client.get(`/calendars/${calendarId}/free-slots`, {
+    params: { locationId, startDate, endDate, timezone },
   });
   return res.data || {};
 }
