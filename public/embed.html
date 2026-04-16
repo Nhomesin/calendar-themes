@@ -3,235 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Book an appointment</title>
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --ct-primary:      #6C63FF;
-      --ct-bg:           #FFFFFF;
-      --ct-text:         #1A1A1A;
-      --ct-btn:          #6C63FF;
-      --ct-btn-text:     #FFFFFF;
-      --ct-font:         system-ui, sans-serif;
-      --ct-radius:       8px;
-    }
-
-    html, body {
-      height: 100%;
-      background: var(--ct-bg);
-      font-family: var(--ct-font);
-      color: var(--ct-text);
-    }
-
-    /* Theme injected here by the server — replaces the :root vars above */
-    /* THEME_PLACEHOLDER */
-
-    .page {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: stretch;
-      padding: 0;
-      margin: 0;
-    }
-
-    .brand-bar {
-      width: 100%;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 16px;
-      margin-bottom: 0;
-    }
-
-    .brand-dot {
-      width: 8px; height: 8px;
-      border-radius: 50%;
-      background: var(--ct-primary);
-      flex-shrink: 0;
-    }
-
-    .brand-name {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--ct-text);
-      opacity: .7;
-    }
-
-    .calendar-frame-wrap {
-      width: 100%;
-      flex: 1;
-      border-radius: 0;
-      overflow: hidden;
-      background: var(--ct-bg);
-      position: relative;
-      min-height: 600px;
-    }
-
-    /* Theme style tag injected by server sits here and overrides the iframe wrapper */
-
-    #cal-iframe {
-      width: 100%;
-      min-height: 600px;
-      height: 100%;
-      border: none;
-      display: block;
-      opacity: 0;
-      transition: opacity .3s;
-    }
-
-    #cal-iframe.loaded { opacity: 1; }
-
-    .loading-ring {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-      transition: opacity .3s;
-    }
-
-    .loading-ring.hidden { opacity: 0; }
-
-    .ring {
-      width: 32px; height: 32px;
-      border: 3px solid color-mix(in srgb, var(--ct-primary) 20%, transparent);
-      border-top-color: var(--ct-primary);
-      border-radius: 50%;
-      animation: spin .8s linear infinite;
-    }
-
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    .powered {
-      margin-top: 20px;
-      font-size: 11px;
-      color: var(--ct-text);
-      opacity: .3;
-      letter-spacing: .03em;
-    }
-
-    /* Error state */
-    .error-state {
-      display: none;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 48px 24px;
-      text-align: center;
-      gap: 12px;
-      min-height: 300px;
-    }
-
-    .error-state.show { display: flex; }
-
-    .error-icon {
-      width: 40px; height: 40px;
-      border-radius: 50%;
-      background: color-mix(in srgb, var(--ct-primary) 12%, transparent);
-      display: flex; align-items: center; justify-content: center;
-      font-size: 18px;
-    }
-
-    .error-title { font-size: 15px; font-weight: 600; }
-    .error-msg   { font-size: 13px; opacity: .6; max-width: 320px; line-height: 1.6; }
-  </style>
+  <title>Book an Appointment</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/embed-base.css">
 </head>
 <body>
 
-<div class="page">
-
-  <div class="brand-bar">
-    <div class="brand-dot"></div>
-    <span class="brand-name" id="brand-name">Loading...</span>
+<div id="ct-app">
+  <div class="ct-loading">
+    <div class="ct-spinner"></div>
+    <div class="ct-loading-text">Loading calendar...</div>
   </div>
-
-  <div class="calendar-frame-wrap" id="frame-wrap">
-    <div class="loading-ring" id="loading-ring">
-      <div class="ring"></div>
-    </div>
-
-    <div class="error-state" id="error-state">
-      <div class="error-icon">!</div>
-      <div class="error-title">Calendar unavailable</div>
-      <div class="error-msg" id="error-msg">This booking link may be invalid or the calendar has been removed.</div>
-    </div>
-
-    <iframe
-      id="cal-iframe"
-      src=""
-      scrolling="yes"
-      allow="payment"
-      title="Book an appointment"
-    ></iframe>
-  </div>
-
 </div>
 
 <script>
   /* SERVER_VARS_PLACEHOLDER */
-
-  // Use server-injected vars (set above), fall back to query params for direct access
-  const params     = new URLSearchParams(location.search);
-  const calendarId = (typeof SERVER_CALENDAR_ID !== 'undefined' ? SERVER_CALENDAR_ID : null)
-                     || params.get('calendarId') || '';
-  const locationId = (typeof SERVER_LOCATION_ID !== 'undefined' ? SERVER_LOCATION_ID : null)
-                     || params.get('locationId') || '';
-  const bookingName = (typeof SERVER_NAME !== 'undefined' ? SERVER_NAME : null)
-                     || params.get('name') || 'Book an appointment';
-
-  const iframe     = document.getElementById('cal-iframe');
-  const ring       = document.getElementById('loading-ring');
-  const errState   = document.getElementById('error-state');
-  const brandName  = document.getElementById('brand-name');
-
-  // GHL calendar embed URL format
-  const GHL_EMBED  = `https://api.leadconnectorhq.com/widget/booking/${calendarId}`;
-
-  if (!calendarId) {
-    showError('No calendar specified in this link.');
-  } else {
-    iframe.src = GHL_EMBED;
-    brandName.textContent = bookingName;
-
-    iframe.addEventListener('load', () => {
-      iframe.classList.add('loaded');
-      ring.classList.add('hidden');
-    });
-
-    // Fallback: show iframe after 8s even if load event doesn't fire
-    setTimeout(() => {
-      iframe.classList.add('loaded');
-      ring.classList.add('hidden');
-    }, 8000);
-
-    // Auto-resize iframe height via postMessage from GHL widget
-    window.addEventListener('message', (e) => {
-      if (e.data && typeof e.data === 'object') {
-        if (e.data.type === 'SET_HEIGHT' || e.data.height) {
-          const h = e.data.height || e.data.SET_HEIGHT;
-          if (h && h > 200) {
-            iframe.style.minHeight = h + 'px';
-          }
-        }
-      }
-      // Some GHL widgets emit a string with the height
-      if (typeof e.data === 'string' && !isNaN(parseInt(e.data))) {
-        const h = parseInt(e.data);
-        if (h > 200) iframe.style.minHeight = h + 'px';
-      }
-    });
-  }
-
-  function showError(msg) {
-    document.getElementById('error-msg').textContent = msg;
-    errState.classList.add('show');
-    ring.classList.add('hidden');
-    brandName.textContent = 'Unavailable';
-  }
 </script>
+<script src="/js/calendar-renderer.js"></script>
+<script src="/js/embed-app.js"></script>
 
 </body>
 </html>

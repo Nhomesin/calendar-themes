@@ -25,6 +25,9 @@ router.get('/install', (req, res) => {
     scope: [
       'calendars.readonly',
       'calendars.write',
+      'calendars/events.readonly',
+      'calendars/events.write',
+      'contacts.write',
       'locations.readonly',
     ].join(' '),
   });

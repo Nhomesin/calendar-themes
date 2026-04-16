@@ -33,38 +33,47 @@ async function getCalendar(accessToken, calendarId) {
   return res.data?.calendar || res.data || null;
 }
 
-// Push theme to a calendar using GHL's native widgetCustomization fields.
-// This works with the Neo widget and is the correct API approach.
-async function pushThemeToCalendar(accessToken, calendarId, theme) {
+async function getFreeSlots(accessToken, calendarId, startDate, endDate, timezone) {
   const client = ghlClient(accessToken);
-
-  // First fetch the calendar to preserve existing settings
-  let existing = {};
-  try {
-    const cal = await getCalendar(accessToken, calendarId);
-    existing = cal?.widgetCustomization || {};
-  } catch (_) {}
-
-  const payload = {
-    widgetCustomization: {
-      ...existing,
-      // GHL's native color fields (Neo widget)
-      primaryColor:   theme.primary_color,
-      bgColor:        theme.bg_color,
-      // Button text label (optional)
-      ...(existing.buttonText ? {} : { buttonText: 'Book Appointment' }),
-    },
-  };
-
-  try {
-    const res = await client.put(`/calendars/${calendarId}`, payload);
-    return { ok: true, data: res.data };
-  } catch (err) {
-    const status = err?.response?.status;
-    const detail = err?.response?.data;
-    console.error(`[GHL] pushThemeToCalendar failed for ${calendarId} (${status}):`, JSON.stringify(detail));
-    return { ok: false, status, detail };
-  }
+  const res = await client.get(`/calendars/${calendarId}/free-slots`, {
+    params: { startDate, endDate, timezone },
+  });
+  return res.data || {};
 }
 
-module.exports = { getCalendars, getCalendar, getLocation, pushThemeToCalendar };
+async function createContact(accessToken, locationId, { firstName, lastName, email, phone, timezone }) {
+  const client = ghlClient(accessToken);
+  const res = await client.post('/contacts/', {
+    locationId,
+    firstName,
+    lastName,
+    email,
+    phone: phone || undefined,
+    timezone: timezone || undefined,
+  });
+  return res.data?.contact || res.data || {};
+}
+
+async function createAppointment(accessToken, { calendarId, locationId, contactId, startTime, endTime, title, notes }) {
+  const client = ghlClient(accessToken);
+  const res = await client.post('/calendars/events/appointments', {
+    calendarId,
+    locationId,
+    contactId,
+    startTime,
+    endTime,
+    title: title || 'Appointment',
+    appointmentStatus: 'confirmed',
+    ...(notes ? { notes } : {}),
+  });
+  return res.data || {};
+}
+
+module.exports = {
+  getCalendars,
+  getCalendar,
+  getLocation,
+  getFreeSlots,
+  createContact,
+  createAppointment,
+};

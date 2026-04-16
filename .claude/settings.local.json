@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const db = require\\('./src/db'\\); db.initDb\\(\\).then\\(\\(\\) => { console.log\\('DB init OK'\\); const themes = db.themeQueries.list\\('test'\\); console.log\\('list:', themes\\); const t = db.themeQueries.create\\('test-loc', 'My Theme', { colors: { primary: '#FF0000' } }\\); console.log\\('created:', t.id, t.name, t.config.colors.primary, t.config.colors.background\\); const dup = db.themeQueries.duplicate\\(t.id, 'Dup Theme'\\); console.log\\('duplicated:', dup.id, dup.name\\); const a = db.assignmentQueries.assign\\('test-loc', t.id, 'cal-123', 'Test Cal'\\); console.log\\('assigned:', a.calendar_id, a.theme_id\\); const byCalendar = db.themeQueries.getByCalendar\\('cal-123'\\); console.log\\('byCalendar:', byCalendar.name\\); db.themeQueries.delete\\(t.id\\); db.themeQueries.delete\\(dup.id\\); console.log\\('cleanup done'\\); }\\).catch\\(e => console.error\\(e\\)\\)\")",
+      "Bash(node -e ' *)",
+      "Bash(timeout 5 node src/index.js)",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:3000/health)",
+      "Bash(curl -s http://localhost:3000/api/presets)",
+      "Bash(node -e \"const d=[];process.stdin.on\\('data',c=>d.push\\(c\\)\\);process.stdin.on\\('end',\\(\\)=>{const j=JSON.parse\\(d.join\\(''\\)\\);console.log\\('Presets:', j.presets.length\\);j.presets.forEach\\(p=>console.log\\(' ',p.id,'-',p.name\\)\\)}\\)\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/app)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/js/calendar-renderer.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/js/builder-app.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/js/embed-app.js)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/css/builder.css)",
+      "Bash(curl -s http://localhost:3000/embed/test-loc/fake-cal-123)",
+      "Bash(node -pe \"JSON.stringify\\(JSON.parse\\(require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\)\\),null,2\\)\")",
+      "Bash(git add *)"
+    ]
+  }
+}

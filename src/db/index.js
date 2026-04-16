@@ -1,5 +1,7 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const { getDefaultConfig, mergeWithDefaults } = require('../services/themeDefaults');
 
 // On Railway, use the persistent volume mount at /app/data
 // Locally, fall back to the project's data/ directory
@@ -28,6 +30,7 @@ async function initDb() {
     dbSync = new SQL.Database();
   }
 
+  // ── Existing tables (kept for migration) ─────────────────────────────────
   dbSync.run(`
     CREATE TABLE IF NOT EXISTS locations (
       location_id      TEXT PRIMARY KEY,
@@ -56,8 +59,78 @@ async function initDb() {
     );
   `);
 
+  // ── New v2 tables ────────────────────────────────────────────────────────
+  dbSync.run(`
+    CREATE TABLE IF NOT EXISTS themes_v2 (
+      id            TEXT PRIMARY KEY,
+      location_id   TEXT NOT NULL,
+      name          TEXT NOT NULL DEFAULT 'Untitled Theme',
+      config        TEXT NOT NULL DEFAULT '{}',
+      created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      updated_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      FOREIGN KEY (location_id) REFERENCES locations(location_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_themes_v2_location ON themes_v2(location_id);
+
+    CREATE TABLE IF NOT EXISTS theme_assignments (
+      id            TEXT PRIMARY KEY,
+      location_id   TEXT NOT NULL,
+      theme_id      TEXT NOT NULL,
+      calendar_id   TEXT NOT NULL UNIQUE,
+      calendar_name TEXT,
+      created_at    INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+      FOREIGN KEY (location_id) REFERENCES locations(location_id) ON DELETE CASCADE,
+      FOREIGN KEY (theme_id) REFERENCES themes_v2(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_assignments_location ON theme_assignments(location_id);
+    CREATE INDEX IF NOT EXISTS idx_assignments_theme ON theme_assignments(theme_id);
+  `);
+
+  // ── Migrate old themes → themes_v2 ──────────────────────────────────────
+  migrateOldThemes();
+
   persist();
   return dbSync;
+}
+
+function migrateOldThemes() {
+  const oldRows = getRows('SELECT * FROM themes', []);
+  for (const row of oldRows) {
+    // Skip if this location already has a v2 theme
+    const existing = getRow(
+      'SELECT id FROM themes_v2 WHERE location_id = ? LIMIT 1',
+      [row.location_id]
+    );
+    if (existing) continue;
+
+    const defaults = getDefaultConfig();
+    const config = {
+      ...defaults,
+      colors: {
+        ...defaults.colors,
+        primary: row.primary_color || defaults.colors.primary,
+        background: row.bg_color || defaults.colors.background,
+        text: row.text_color || defaults.colors.text,
+        buttonBg: row.button_color || defaults.colors.buttonBg,
+        buttonText: row.button_text || defaults.colors.buttonText,
+      },
+      typography: {
+        ...defaults.typography,
+        fontFamily: row.font_family || defaults.typography.fontFamily,
+      },
+      spacing: {
+        ...defaults.spacing,
+        borderRadius: row.border_radius ?? defaults.spacing.borderRadius,
+      },
+      customCss: row.custom_css || '',
+    };
+
+    const id = crypto.randomUUID();
+    runQuery(`
+      INSERT INTO themes_v2 (id, location_id, name, config, created_at, updated_at)
+      VALUES (?, ?, 'Migrated Theme', ?, strftime('%s','now'), strftime('%s','now'))
+    `, [id, row.location_id, JSON.stringify(config)]);
+  }
 }
 
 function persist() {
@@ -71,7 +144,7 @@ function getDbSync() {
   return dbSync;
 }
 
-function runQuery(sql, params = {}) {
+function runQuery(sql, params = []) {
   getDbSync().run(sql, params);
   persist();
 }
@@ -84,13 +157,24 @@ function getRow(sql, params = []) {
   return row;
 }
 
+function getRows(sql, params = []) {
+  const stmt = getDbSync().prepare(sql);
+  stmt.bind(params);
+  const rows = [];
+  while (stmt.step()) {
+    rows.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return rows;
+}
+
 // ── Location queries ───────────────────────────────────────────────────────
 
 const locationQueries = {
   upsert(row) {
     runQuery(`
       INSERT INTO locations (location_id, access_token, refresh_token, token_expires_at, company_id, location_name)
-      VALUES (:location_id, :access_token, :refresh_token, :token_expires_at, :company_id, :location_name)
+      VALUES (?, ?, ?, ?, ?, ?)
       ON CONFLICT(location_id) DO UPDATE SET
         access_token     = excluded.access_token,
         refresh_token    = excluded.refresh_token,
@@ -98,73 +182,118 @@ const locationQueries = {
         company_id       = excluded.company_id,
         location_name    = excluded.location_name,
         active           = 1
-    `, {
-      ':location_id': row.location_id,
-      ':access_token': row.access_token,
-      ':refresh_token': row.refresh_token,
-      ':token_expires_at': row.token_expires_at,
-      ':company_id': row.company_id || null,
-      ':location_name': row.location_name || null,
-    });
+    `, [
+      row.location_id,
+      row.access_token,
+      row.refresh_token,
+      row.token_expires_at,
+      row.company_id || null,
+      row.location_name || null,
+    ]);
   },
 
   get(locationId) {
-    return getRow(`SELECT * FROM locations WHERE location_id = ? AND active = 1`, [locationId]);
+    return getRow('SELECT * FROM locations WHERE location_id = ? AND active = 1', [locationId]);
   },
 
   updateTokens(row) {
     runQuery(`
       UPDATE locations SET
-        access_token     = :access_token,
-        refresh_token    = :refresh_token,
-        token_expires_at = :token_expires_at
-      WHERE location_id  = :location_id
-    `, {
-      ':access_token': row.access_token,
-      ':refresh_token': row.refresh_token,
-      ':token_expires_at': row.token_expires_at,
-      ':location_id': row.location_id,
-    });
+        access_token     = ?,
+        refresh_token    = ?,
+        token_expires_at = ?
+      WHERE location_id  = ?
+    `, [row.access_token, row.refresh_token, row.token_expires_at, row.location_id]);
   },
 
   deactivate(locationId) {
-    runQuery(`UPDATE locations SET active = 0 WHERE location_id = ?`, [locationId]);
+    runQuery('UPDATE locations SET active = 0 WHERE location_id = ?', [locationId]);
   },
 };
 
-// ── Theme queries ──────────────────────────────────────────────────────────
+// ── Theme queries (v2 — multiple themes per location, JSON config) ────────
 
 const themeQueries = {
-  get(locationId) {
-    return getRow(`SELECT * FROM themes WHERE location_id = ?`, [locationId]);
+  list(locationId) {
+    return getRows('SELECT * FROM themes_v2 WHERE location_id = ? ORDER BY created_at ASC', [locationId]);
   },
 
-  upsert(row) {
+  get(themeId) {
+    const row = getRow('SELECT * FROM themes_v2 WHERE id = ?', [themeId]);
+    if (row) row.config = JSON.parse(row.config || '{}');
+    return row;
+  },
+
+  getByCalendar(calendarId) {
+    const row = getRow(`
+      SELECT t.* FROM themes_v2 t
+      INNER JOIN theme_assignments a ON a.theme_id = t.id
+      WHERE a.calendar_id = ?
+    `, [calendarId]);
+    if (row) row.config = JSON.parse(row.config || '{}');
+    return row;
+  },
+
+  create(locationId, name, config) {
+    const id = crypto.randomUUID();
+    const merged = mergeWithDefaults(config);
     runQuery(`
-      INSERT INTO themes (location_id, primary_color, bg_color, text_color, button_color, button_text, font_family, border_radius, custom_css, updated_at)
-      VALUES (:location_id, :primary_color, :bg_color, :text_color, :button_color, :button_text, :font_family, :border_radius, :custom_css, strftime('%s','now'))
-      ON CONFLICT(location_id) DO UPDATE SET
-        primary_color = excluded.primary_color,
-        bg_color      = excluded.bg_color,
-        text_color    = excluded.text_color,
-        button_color  = excluded.button_color,
-        button_text   = excluded.button_text,
-        font_family   = excluded.font_family,
-        border_radius = excluded.border_radius,
-        custom_css    = excluded.custom_css,
-        updated_at    = strftime('%s','now')
-    `, {
-      ':location_id': row.location_id,
-      ':primary_color': row.primary_color || '#6C63FF',
-      ':bg_color': row.bg_color || '#FFFFFF',
-      ':text_color': row.text_color || '#1A1A1A',
-      ':button_color': row.button_color || '#6C63FF',
-      ':button_text': row.button_text || '#FFFFFF',
-      ':font_family': row.font_family || 'Inter, sans-serif',
-      ':border_radius': row.border_radius ?? 8,
-      ':custom_css': row.custom_css || '',
-    });
+      INSERT INTO themes_v2 (id, location_id, name, config, created_at, updated_at)
+      VALUES (?, ?, ?, ?, strftime('%s','now'), strftime('%s','now'))
+    `, [id, locationId, name || 'Untitled Theme', JSON.stringify(merged)]);
+    return this.get(id);
+  },
+
+  update(themeId, name, config) {
+    const existing = this.get(themeId);
+    if (!existing) return null;
+    const merged = mergeWithDefaults(config);
+    runQuery(`
+      UPDATE themes_v2 SET name = ?, config = ?, updated_at = strftime('%s','now')
+      WHERE id = ?
+    `, [name || existing.name, JSON.stringify(merged), themeId]);
+    return this.get(themeId);
+  },
+
+  delete(themeId) {
+    runQuery('DELETE FROM themes_v2 WHERE id = ?', [themeId]);
+  },
+
+  duplicate(themeId, newName) {
+    const original = this.get(themeId);
+    if (!original) return null;
+    return this.create(original.location_id, newName || `${original.name} (copy)`, original.config);
   },
 };
 
-module.exports = { initDb, locationQueries, themeQueries };
+// ── Assignment queries ────────────────────────────────────────────────────
+
+const assignmentQueries = {
+  list(locationId) {
+    return getRows('SELECT * FROM theme_assignments WHERE location_id = ? ORDER BY created_at ASC', [locationId]);
+  },
+
+  getByCalendar(calendarId) {
+    return getRow('SELECT * FROM theme_assignments WHERE calendar_id = ?', [calendarId]);
+  },
+
+  listByTheme(themeId) {
+    return getRows('SELECT * FROM theme_assignments WHERE theme_id = ?', [themeId]);
+  },
+
+  assign(locationId, themeId, calendarId, calendarName) {
+    const id = crypto.randomUUID();
+    // UNIQUE(calendar_id) — INSERT OR REPLACE swaps the old assignment
+    runQuery(`
+      INSERT OR REPLACE INTO theme_assignments (id, location_id, theme_id, calendar_id, calendar_name, created_at)
+      VALUES (?, ?, ?, ?, ?, strftime('%s','now'))
+    `, [id, locationId, themeId, calendarId, calendarName || null]);
+    return this.getByCalendar(calendarId);
+  },
+
+  unassign(assignmentId) {
+    runQuery('DELETE FROM theme_assignments WHERE id = ?', [assignmentId]);
+  },
+};
+
+module.exports = { initDb, locationQueries, themeQueries, assignmentQueries };

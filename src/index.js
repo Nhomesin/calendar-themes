@@ -4,14 +4,18 @@ const express = require('express');
 const cors = require('cors');
 const cookieParser = require('cookie-parser');
 const path = require('path');
+const fs = require('fs');
 
 const { initDb } = require('./db');
-const oauthRoutes    = require('./routes/oauth');
-const webhookRoutes  = require('./routes/webhooks');
-const themeRoutes    = require('./routes/themes');
-const calendarRoutes = require('./routes/calendars');
-const { themeQueries } = require('./db');
-const { compileTheme }  = require('./services/cssCompiler');
+const oauthRoutes      = require('./routes/oauth');
+const webhookRoutes    = require('./routes/webhooks');
+const themeRoutes      = require('./routes/themes');
+const calendarRoutes   = require('./routes/calendars');
+const assignmentRoutes = require('./routes/assignments');
+const bookingRoutes    = require('./routes/booking');
+const { themeQueries, assignmentQueries } = require('./db');
+const { getDefaultConfig } = require('./services/themeDefaults');
+const { presets } = require('./services/presets');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,58 +35,66 @@ app.use('/oauth',    oauthRoutes);
 app.use('/webhooks', webhookRoutes);
 
 // ── API routes ────────────────────────────────────────────────────────────────
-app.use('/api/themes',    themeRoutes);
-app.use('/api/calendars', calendarRoutes);
+app.use('/api/themes',      themeRoutes);
+app.use('/api/calendars',   calendarRoutes);
+app.use('/api/assignments', assignmentRoutes);
+app.use('/api',             bookingRoutes);
 
-// ── /theme.css — top-level endpoint used by embed pages ──────────────────────
-// GET /theme.css?locationId=xxx
-app.get('/theme.css', (req, res) => {
-  const { locationId } = req.query;
-
-  if (!locationId) {
-    res.setHeader('Content-Type', 'text/css');
-    return res.send('/* missing locationId */');
-  }
-
-  const theme = themeQueries.get(locationId);
-  const css   = compileTheme(theme); // falls back to defaults if no theme saved yet
-
-  res.setHeader('Content-Type', 'text/css');
-  res.setHeader('Cache-Control', 'public, max-age=300');
-  res.send(css);
+// ── Presets (no auth needed) ──────────────────────────────────────────────
+app.get('/api/presets', (req, res) => {
+  res.json({
+    presets: presets.map(p => ({
+      id: p.id,
+      name: p.name,
+      description: p.description,
+      previewColors: p.previewColors,
+      config: p.config,
+    })),
+  });
 });
 
 // ── Embed page — themed calendar booking ─────────────────────────────────────
 // GET /embed/:locationId/:calendarId
 app.get('/embed/:locationId/:calendarId', (req, res) => {
   const { locationId, calendarId } = req.params;
-  const name = req.query.name || 'Book an appointment';
+  const name = req.query.name || 'Book an Appointment';
 
-  const theme = themeQueries.get(locationId);
-  const css   = compileTheme(theme);
+  // Look up theme assignment for this calendar
+  const assignment = assignmentQueries.getByCalendar(calendarId);
 
-  // Extract just the :root block to inject
-  const rootMatch = css.match(/:root[\s\S]*?\{[\s\S]*?\}/);
-  const rootCss   = rootMatch ? rootMatch[0] : '';
+  if (assignment) {
+    // Custom theme assigned — serve the custom booking UI
+    const theme = themeQueries.get(assignment.theme_id);
+    const config = theme ? theme.config : getDefaultConfig();
 
-  const fs       = require('fs');
-  const tmplPath = require('path').join(__dirname, '../public/embed.html');
-  let html = fs.readFileSync(tmplPath, 'utf8');
+    const tmplPath = path.join(__dirname, '../public/embed.html');
+    let html = fs.readFileSync(tmplPath, 'utf8');
 
-  // Inject theme CSS
-  html = html.replace('/* THEME_PLACEHOLDER */', rootCss);
+    html = html.replace(
+      '/* SERVER_VARS_PLACEHOLDER */',
+      `var SERVER_CALENDAR_ID = ${JSON.stringify(calendarId)};
+       var SERVER_LOCATION_ID = ${JSON.stringify(locationId)};
+       var SERVER_NAME        = ${JSON.stringify(name)};
+       var SERVER_THEME_CONFIG = ${JSON.stringify(config)};`
+    );
 
-  // Inject calendarId, locationId, name directly as JS variables
-  // so the client never needs to parse params — values come from the server
-  html = html.replace(
-    '/* SERVER_VARS_PLACEHOLDER */',
-    `var SERVER_CALENDAR_ID = ${JSON.stringify(calendarId)};
-     var SERVER_LOCATION_ID = ${JSON.stringify(locationId)};
-     var SERVER_NAME        = ${JSON.stringify(name)};`
-  );
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } else {
+    // No theme assigned — fall back to GHL native widget iframe
+    const tmplPath = path.join(__dirname, '../public/embed-fallback.html');
+    let html = fs.readFileSync(tmplPath, 'utf8');
 
-  res.setHeader('Content-Type', 'text/html');
-  res.send(html);
+    html = html.replace(
+      '/* SERVER_VARS_PLACEHOLDER */',
+      `var SERVER_CALENDAR_ID = ${JSON.stringify(calendarId)};
+       var SERVER_LOCATION_ID = ${JSON.stringify(locationId)};
+       var SERVER_NAME        = ${JSON.stringify(name)};`
+    );
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  }
 });
 
 // ── Health check ──────────────────────────────────────────────────────────────
