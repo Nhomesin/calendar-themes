@@ -33,10 +33,19 @@ async function getCalendar(accessToken, calendarId) {
   return res.data?.calendar || res.data || null;
 }
 
-async function getFreeSlots(accessToken, calendarId, locationId, startDate, endDate, timezone) {
+async function getFreeSlots(accessToken, calendarId, startDate, endDate, timezone) {
   const client = ghlClient(accessToken);
+
+  // GHL expects Unix timestamps in milliseconds, not date strings
+  const startMs = new Date(startDate + 'T00:00:00').getTime();
+  const endMs   = new Date(endDate + 'T23:59:59').getTime();
+
   const res = await client.get(`/calendars/${calendarId}/free-slots`, {
-    params: { locationId, startDate, endDate, timezone },
+    params: {
+      startDate: startMs,
+      endDate: endMs,
+      timezone,
+    },
   });
   return res.data || {};
 }

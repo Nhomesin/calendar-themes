@@ -4,7 +4,7 @@ const { getFreeSlots, createContact, createAppointment } = require('../services/
 
 // GET /api/slots/:locationId/:calendarId — proxy GHL free-slots
 router.get('/slots/:locationId/:calendarId', requireLocation, async (req, res) => {
-  const { locationId, calendarId } = req.params;
+  const { calendarId } = req.params;
   const { startDate, endDate, timezone } = req.query;
 
   if (!startDate || !endDate) {
@@ -15,7 +15,6 @@ router.get('/slots/:locationId/:calendarId', requireLocation, async (req, res) =
     const raw = await getFreeSlots(
       req.accessToken,
       calendarId,
-      locationId,
       startDate,
       endDate,
       timezone || 'America/New_York'
