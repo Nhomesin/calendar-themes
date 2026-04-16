@@ -228,18 +228,33 @@ body {
   border-color: var(--accent-mid);
 }
 
+.theme-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
 .theme-card-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--text);
-  margin-bottom: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-right: 24px;
+  flex: 1;
+  min-width: 0;
+  line-height: 22px;
 }
 
 .theme-card.active .theme-card-name { color: var(--accent); }
+
+.theme-card-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
 .theme-card-swatches {
   display: flex;
@@ -258,18 +273,17 @@ body {
 .theme-card-meta {
   font-size: 11px;
   color: var(--faint);
-  margin-top: 6px;
   font-weight: 500;
 }
 
 .theme-card-actions {
-  position: absolute;
-  top: 10px; right: 10px;
   display: none;
   gap: 3px;
+  flex-shrink: 0;
 }
 
-.theme-card:hover .theme-card-actions { display: flex; }
+.theme-card:hover .theme-card-actions,
+.theme-card.active .theme-card-actions { display: flex; }
 
 .theme-card-action {
   width: 22px; height: 22px;

@@ -98,16 +98,21 @@
       card.onclick = () => selectTheme(t.id);
 
       card.innerHTML = `
-        <div class="theme-card-name">${escHtml(t.name || 'Untitled')}</div>
-        <div class="theme-card-swatches">
-          <div class="theme-card-swatch" style="background:${colors.primary || '#6C63FF'}"></div>
-          <div class="theme-card-swatch" style="background:${colors.background || '#FFFFFF'}"></div>
-          <div class="theme-card-swatch" style="background:${colors.buttonBg || colors.primary || '#6C63FF'}"></div>
+        <div class="theme-card-top">
+          <div class="theme-card-name">${escHtml(t.name || 'Untitled')}</div>
+          <div class="theme-card-actions">
+            <button class="theme-card-action" title="Rename" onclick="event.stopPropagation(); window._builder.renameTheme('${t.id}')">&#9998;</button>
+            <button class="theme-card-action" title="Duplicate" onclick="event.stopPropagation(); window._builder.duplicateTheme('${t.id}')">&#10697;</button>
+            <button class="theme-card-action danger" title="Delete" onclick="event.stopPropagation(); window._builder.deleteTheme('${t.id}')">&#10005;</button>
+          </div>
         </div>
-        <div class="theme-card-meta">${assignCount} calendar${assignCount !== 1 ? 's' : ''}</div>
-        <div class="theme-card-actions">
-          <button class="theme-card-action" title="Duplicate" onclick="event.stopPropagation(); window._builder.duplicateTheme('${t.id}')">⧉</button>
-          <button class="theme-card-action danger" title="Delete" onclick="event.stopPropagation(); window._builder.deleteTheme('${t.id}')">×</button>
+        <div class="theme-card-bottom">
+          <div class="theme-card-swatches">
+            <div class="theme-card-swatch" style="background:${colors.primary || '#6C63FF'}"></div>
+            <div class="theme-card-swatch" style="background:${colors.background || '#FFFFFF'}"></div>
+            <div class="theme-card-swatch" style="background:${colors.buttonBg || colors.primary || '#6C63FF'}"></div>
+          </div>
+          <div class="theme-card-meta">${assignCount} calendar${assignCount !== 1 ? 's' : ''}</div>
         </div>
       `;
 
@@ -1046,14 +1051,28 @@
 
   // ── Rename ───────────────────────────────────────────────────────────────
 
-  function renameTheme(themeId) {
+  async function renameTheme(themeId) {
     const theme = themes.find(t => t.id === themeId);
     if (!theme) return;
     const newName = prompt('Rename theme:', theme.name);
-    if (!newName || newName === theme.name) return;
-    theme.name = newName;
-    renderThemeList();
-    // Will persist on next save
+    if (!newName || newName.trim() === '' || newName === theme.name) return;
+
+    try {
+      const config = typeof theme.config === 'string' ? JSON.parse(theme.config) : (theme.config || {});
+      const res = await fetch(`${BASE_URL}/api/themes/${LOC_ID}/${themeId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName.trim(), config }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const updated = await res.json();
+      const idx = themes.findIndex(t => t.id === themeId);
+      if (idx >= 0) themes[idx] = updated;
+      renderThemeList();
+      showToast('Theme renamed', 'ok');
+    } catch (e) {
+      showToast('Failed to rename: ' + e.message, 'err');
+    }
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
