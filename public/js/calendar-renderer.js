@@ -28,6 +28,7 @@ class CalendarRenderer {
     this.currentStep = 0;
     this.steps = (config.layout && config.layout.stepsOrder) || ['calendar', 'time', 'form', 'confirm'];
     this.isLoading = false;
+    this.initialLoaded = false;  // first slot fetch hasn't resolved yet
     this.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
 
     // DOM refs
@@ -39,13 +40,28 @@ class CalendarRenderer {
   init() {
     this.applyThemeVars();
     if (!this.previewMode) {
-      this.isLoading = true; // prevent disabling days before slots arrive
-      this.render();
+      // Show a clean loading state; don't render the full calendar until
+      // initial slot data is back (prevents the empty-calendar flicker).
+      this.isLoading = true;
+      this.renderLoadingState();
       this.fetchSlotsForMonth(this.currentYear, this.currentMonth);
     } else {
+      this.initialLoaded = true;
       this.render();
       this.loadMockSlots();
     }
+  }
+
+  renderLoadingState() {
+    const app = el('div', '');
+    app.id = 'ct-app';
+    const wrap = el('div', 'ct-initial-loading');
+    wrap.appendChild(el('div', 'ct-spinner'));
+    const text = el('div', 'ct-loading-text');
+    text.textContent = 'Loading availability…';
+    wrap.appendChild(text);
+    app.appendChild(wrap);
+    this.container.replaceChildren(app);
   }
 
   updateConfig(newConfig) {
@@ -107,11 +123,15 @@ class CalendarRenderer {
   // ── Main Render ─────────────────────────────────────────────────────────
 
   render() {
+    // In real booking mode, don't render the full UI until initial slots have loaded
+    if (!this.previewMode && !this.initialLoaded) {
+      this.renderLoadingState();
+      return;
+    }
+
     const layout = (this.config.layout && this.config.layout.type) || 'multi-step';
     const comp = this.config.components || {};
     const hasCombined = this.steps.includes('calendar+time');
-
-    this.container.innerHTML = '';
 
     // Create inner wrapper — never clobber the container's own class/id
     const classes = [];
@@ -180,7 +200,9 @@ class CalendarRenderer {
       app.appendChild(tz);
     }
 
-    this.container.appendChild(app);
+    // Atomic swap — prevents the blank-flash between renders
+    this.container.replaceChildren(app);
+    this.els.app = app;
   }
 
   renderStep(container, stepName) {
@@ -282,17 +304,29 @@ class CalendarRenderer {
 
     container.appendChild(wrapper);
 
-    // Override day click to stay on same step and refresh time slots
-    calSide.querySelectorAll('.ct-cal-day').forEach(dayBtn => {
-      const origClick = dayBtn.onclick;
+    // Store refs so date clicks can update only the time column, not the whole app
+    this.els.combinedCal = calSide;
+    this.els.combinedTime = timeSide;
+
+    // Surgical day click — update selection + re-render time panel only
+    calSide.querySelectorAll('.ct-cal-day').forEach((dayBtn, idx) => {
       dayBtn.onclick = () => {
-        if (dayBtn.classList.contains('disabled')) return;
-        const dateStr = dayBtn.textContent;
-        const d = parseInt(dateStr);
+        if (dayBtn.classList.contains('disabled') || dayBtn.classList.contains('empty')) return;
+        const d = parseInt(dayBtn.textContent);
         if (isNaN(d)) return;
+
         this.selectedDate = this.dateStr(this.currentYear, this.currentMonth, d);
         this.selectedSlot = null;
-        this.render();
+
+        // Update selected highlight without rebuilding DOM
+        calSide.querySelectorAll('.ct-cal-day.selected').forEach(e => e.classList.remove('selected'));
+        dayBtn.classList.add('selected');
+
+        // Replace the time panel contents only
+        const newTime = el('div', 'ct-combined-time');
+        this.renderTimeSlotsInline(newTime);
+        this.els.combinedTime.replaceWith(newTime);
+        this.els.combinedTime = newTime;
       };
     });
   }
@@ -579,6 +613,8 @@ class CalendarRenderer {
     const cached = this.slotCache.get(key);
     if (cached && Date.now() - cached.ts < 5 * 60 * 1000) {
       this.availableSlots = { ...this.availableSlots, ...cached.data };
+      this.isLoading = false;
+      this.initialLoaded = true;
       this.render();
       return;
     }
@@ -588,7 +624,9 @@ class CalendarRenderer {
     const endDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`;
 
     this.isLoading = true;
-    this.render();
+    // Only show a loading state on the very first fetch; subsequent fetches
+    // keep the existing calendar visible to avoid jarring flicker.
+    if (!this.initialLoaded) this.renderLoadingState();
 
     try {
       const data = this.onFetchSlots
@@ -608,7 +646,6 @@ class CalendarRenderer {
           }
         }
       }
-      console.log('[CalRenderer] Normalized slots:', Object.keys(normalized).length, 'days');
 
       this.slotCache.set(key, { data: normalized, ts: Date.now() });
       this.availableSlots = { ...this.availableSlots, ...normalized };
@@ -617,6 +654,7 @@ class CalendarRenderer {
     }
 
     this.isLoading = false;
+    this.initialLoaded = true;
     this.render();
   }
 

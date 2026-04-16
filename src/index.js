@@ -34,16 +34,11 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Frame policy — per route
-// - /embed/*  → allow embedding on ANY site (customer booking pages)
-// - everything else (builder, /app) → lock to self + GHL only
+// Allow framing on any site. GHL often uses white-labeled agency domains
+// (app.myagency.com etc), so pinning to *.gohighlevel.com breaks installs.
 app.use((req, res, next) => {
   res.removeHeader('X-Frame-Options');
-  if (req.path.startsWith('/embed/') || req.path.startsWith('/css/') || req.path.startsWith('/js/')) {
-    res.setHeader('Content-Security-Policy', "frame-ancestors *");
-  } else {
-    res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://*.gohighlevel.com https://*.leadconnectorhq.com");
-  }
+  res.setHeader('Content-Security-Policy', "frame-ancestors *");
   next();
 });
 
