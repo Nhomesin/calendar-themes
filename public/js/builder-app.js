@@ -1097,15 +1097,31 @@
 
   // ── Preview ──────────────────────────────────────────────────────────────
 
+  function applyFrameClasses() {
+    const frame = $('#preview-frame');
+    if (!frame || !currentConfig) return;
+    const layout = currentConfig.layout?.type || 'multi-step';
+    const steps = currentConfig.layout?.stepsOrder || [];
+    const hasCombined = steps.includes('calendar+time');
+
+    const classes = ['preview-frame', `device-${previewDevice}`];
+    if (layout === 'sidebar') classes.push('layout-sidebar');
+    if (layout === 'single-page') classes.push('layout-single-page');
+    if (hasCombined) classes.push('flow-combined');
+
+    frame.className = classes.join(' ');
+  }
+
   function renderPreview() {
     const frame = $('#preview-frame');
     frame.innerHTML = '';
-    frame.className = `preview-frame device-${previewDevice}`;
+    applyFrameClasses();
     previewRenderer = new CalendarRenderer(frame, currentConfig, { previewMode: true });
     previewRenderer.init();
   }
 
   function updatePreview() {
+    applyFrameClasses();
     if (previewRenderer) previewRenderer.updateConfig(currentConfig);
   }
 
@@ -1230,8 +1246,18 @@
       btn.onclick = () => {
         previewDevice = btn.dataset.device;
         $$('#device-switch .device-btn').forEach(b => b.classList.toggle('active', b === btn));
-        const frame = $('#preview-frame');
-        frame.className = `preview-frame device-${previewDevice}`;
+        applyFrameClasses();
+      };
+    });
+
+    // Mobile edit/preview toggle
+    document.body.classList.add('mv-edit');
+    $$('.mobile-switch .ms-btn').forEach(btn => {
+      btn.onclick = () => {
+        const view = btn.dataset.mobileView;
+        $$('.mobile-switch .ms-btn').forEach(b => b.classList.toggle('active', b === btn));
+        document.body.classList.remove('mv-edit', 'mv-preview');
+        document.body.classList.add(`mv-${view}`);
       };
     });
 

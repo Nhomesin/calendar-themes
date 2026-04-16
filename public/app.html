@@ -6,7 +6,7 @@
   <title>CalTheme — Booking Calendar Designer</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/builder.css">
   <link rel="stylesheet" href="/css/embed-preview.css">
 </head>
@@ -16,13 +16,11 @@
 <div class="boot-overlay" id="loading">
   <div class="boot-inner">
     <div class="boot-mark"></div>
-    <span class="boot-text">Preparing your workspace</span>
+    <span class="boot-text">Loading your workspace</span>
   </div>
 </div>
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- GALLERY VIEW                                                              -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ═════════════════════════════════ GALLERY VIEW ═════════════════════════════════ -->
 <section class="view view-gallery" id="view-gallery" data-view="gallery">
 
   <header class="nav">
@@ -43,11 +41,11 @@
       <div class="nav-actions">
         <button class="btn btn-ghost" id="nav-assignments-btn">
           <svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          Assignments
+          <span>Assignments</span>
         </button>
         <button class="btn btn-primary" id="new-theme-btn">
           <svg viewBox="0 0 16 16" fill="none"><path d="M8 2v12M2 8h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          New theme
+          <span>New theme</span>
         </button>
       </div>
     </div>
@@ -55,21 +53,17 @@
 
   <main class="gallery">
     <div class="gallery-head">
-      <div>
-        <h1 class="gallery-title">Your themes</h1>
+      <div class="gallery-head-titles">
+        <h1 class="gallery-title">Themes</h1>
         <p class="gallery-sub" id="gallery-sub">Design your booking calendar to match your brand.</p>
       </div>
-      <div class="gallery-controls">
-        <div class="search-field">
-          <svg viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="m14 14-3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          <input type="text" id="search-input" placeholder="Search themes" autocomplete="off">
-        </div>
+      <div class="search-field">
+        <svg viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="m14 14-3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="text" id="search-input" placeholder="Search themes" autocomplete="off">
       </div>
     </div>
 
-    <div class="theme-grid" id="theme-grid">
-      <!-- Populated by builder-app.js -->
-    </div>
+    <div class="theme-grid" id="theme-grid"></div>
 
     <div class="gallery-empty" id="gallery-empty" hidden>
       <div class="gallery-empty-mark">
@@ -83,15 +77,13 @@
 </section>
 
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- EDITOR VIEW                                                              -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- ═════════════════════════════════ EDITOR VIEW ═════════════════════════════════ -->
 <section class="view view-editor" id="view-editor" data-view="editor" hidden>
 
   <header class="nav nav-editor">
     <div class="nav-inner">
       <div class="nav-left">
-        <button class="btn btn-ghost btn-icon" id="back-btn" aria-label="Back to gallery" title="Back to gallery">
+        <button class="btn btn-ghost btn-icon" id="back-btn" aria-label="Back to gallery" title="Back">
           <svg viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <div class="nav-title-group">
@@ -105,7 +97,7 @@
         <span class="save-status" id="save-status"></span>
         <button class="btn btn-ghost" id="editor-assignments-btn">
           <svg viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-          Assignments
+          <span>Assignments</span>
         </button>
         <button class="btn btn-primary" id="save-btn">
           <svg viewBox="0 0 16 16" fill="none"><path d="M3 3v10h10V6l-3-3H3z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M6 3v3h4V3" stroke="currentColor" stroke-width="1.3"/></svg>
@@ -115,16 +107,19 @@
     </div>
   </header>
 
-  <div class="workspace">
+  <!-- Mobile-only view toggle (Edit / Preview) -->
+  <div class="mobile-switch" id="mobile-switch">
+    <button class="ms-btn active" data-mobile-view="edit">Edit</button>
+    <button class="ms-btn" data-mobile-view="preview">Preview</button>
+  </div>
 
-    <!-- Controls column -->
-    <aside class="panel">
+  <div class="workspace" id="workspace">
+    <aside class="panel" id="controls-panel">
       <div class="panel-tabs" id="editor-tabs"></div>
       <div class="panel-body" id="editor-body"></div>
     </aside>
 
-    <!-- Preview column -->
-    <section class="stage">
+    <section class="stage" id="stage">
       <div class="stage-head">
         <span class="stage-title">Live preview</span>
         <div class="device-switch" id="device-switch">
@@ -140,19 +135,16 @@
         <div class="preview-frame" id="preview-frame"></div>
       </div>
     </section>
-
   </div>
 </section>
 
 
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
-<!-- ASSIGNMENTS DRAWER                                                       -->
-<!-- ═══════════════════════════════════════════════════════════════════════ -->
+<!-- Assignments drawer -->
 <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
 <aside class="drawer" id="assignments-drawer" hidden aria-hidden="true">
   <header class="drawer-head">
     <div>
-      <h2 class="drawer-title">Calendar Assignments</h2>
+      <h2 class="drawer-title">Calendar assignments</h2>
       <p class="drawer-sub">Pick which theme each calendar uses.</p>
     </div>
     <button class="btn btn-ghost btn-icon" id="drawer-close" aria-label="Close">
@@ -163,13 +155,13 @@
 </aside>
 
 
-<!-- Preset picker modal -->
+<!-- Preset modal -->
 <div class="modal-backdrop" id="preset-backdrop" hidden></div>
 <div class="modal" id="preset-modal" hidden aria-hidden="true">
   <header class="modal-head">
     <div>
-      <h2 class="modal-title">Start a new theme</h2>
-      <p class="modal-sub">Pick a preset or begin from scratch.</p>
+      <h2 class="modal-title">New theme</h2>
+      <p class="modal-sub">Pick a preset or start from scratch.</p>
     </div>
     <button class="btn btn-ghost btn-icon" id="preset-close" aria-label="Close">
       <svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
