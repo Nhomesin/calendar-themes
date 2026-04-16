@@ -62,40 +62,9 @@ app.get('/installed', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/installed.html'));
 });
 
-// Theme builder UI — Step 4 will replace this placeholder
+// Theme builder UI
 app.get('/app', (req, res) => {
-  const locationId = req.query.locationId || '';
-  res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CalTheme Builder</title>
-  <style>
-    body { font-family: -apple-system, sans-serif; padding: 2rem; background: #f5f5f5; }
-    .card { background: #fff; border-radius: 12px; padding: 2rem; max-width: 480px; box-shadow: 0 1px 3px rgba(0,0,0,.1); }
-    h2 { margin: 0 0 1rem; font-size: 1.2rem; }
-    .badge { display: inline-block; background: #EAF3DE; color: #27500A; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 500; margin-bottom: 1rem; }
-    p { color: #666; font-size: 14px; line-height: 1.6; }
-    code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h2>CalTheme Builder</h2>
-    <div class="badge">Step 3 complete — API ready</div>
-    <p>Location ID: <code>${locationId || 'not provided'}</code></p>
-    <p>The following API endpoints are now live:</p>
-    <p>
-      <code>GET /api/themes/${locationId || ':locationId'}</code><br><br>
-      <code>POST /api/themes/${locationId || ':locationId'}</code><br><br>
-      <code>GET /api/calendars/${locationId || ':locationId'}</code><br><br>
-      <code>GET /theme.css?locationId=${locationId || '...'}</code>
-    </p>
-    <p style="color:#999;margin-top:1.5rem">Theme builder UI coming in Step 4.</p>
-  </div>
-</body>
-</html>`);
+  res.sendFile(path.join(__dirname, '../public/app.html'));
 });
 
 // ── Start ─────────────────────────────────────────────────────────────────────
