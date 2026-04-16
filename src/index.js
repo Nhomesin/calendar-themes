@@ -34,10 +34,16 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// Allow embedding in GHL iframes
+// Frame policy — per route
+// - /embed/*  → allow embedding on ANY site (customer booking pages)
+// - everything else (builder, /app) → lock to self + GHL only
 app.use((req, res, next) => {
   res.removeHeader('X-Frame-Options');
-  res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://*.gohighlevel.com https://*.leadconnectorhq.com");
+  if (req.path.startsWith('/embed/') || req.path.startsWith('/css/') || req.path.startsWith('/js/')) {
+    res.setHeader('Content-Security-Policy', "frame-ancestors *");
+  } else {
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'self' https://*.gohighlevel.com https://*.leadconnectorhq.com");
+  }
   next();
 });
 
