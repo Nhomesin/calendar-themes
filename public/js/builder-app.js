@@ -31,8 +31,6 @@
   // ── Boot ─────────────────────────────────────────────────────────────────
 
   async function boot() {
-    $('#loc-display').textContent = LOC_ID || 'no location';
-
     if (!LOC_ID) {
       $('#loading').classList.add('hidden');
       renderGallery();
@@ -1626,9 +1624,43 @@
     });
 
     // Search
-    $('#search-input').addEventListener('input', (e) => {
+    const searchInput = $('#search-input');
+    const searchField = $('#search-field');
+    const searchClear = $('#search-clear');
+    const syncSearchUI = () => {
+      const hasValue = !!searchInput.value;
+      searchField.classList.toggle('has-value', hasValue);
+      searchClear.hidden = !hasValue;
+    };
+    searchInput.addEventListener('input', (e) => {
       searchQuery = e.target.value;
+      syncSearchUI();
       renderGallery();
+    });
+    searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && searchInput.value) {
+        searchInput.value = '';
+        searchQuery = '';
+        syncSearchUI();
+        renderGallery();
+      }
+    });
+    searchClear.addEventListener('click', () => {
+      searchInput.value = '';
+      searchQuery = '';
+      syncSearchUI();
+      renderGallery();
+      searchInput.focus();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target && e.target.isContentEditable)) return;
+      const gallery = document.getElementById('view-gallery');
+      if (!gallery || gallery.hasAttribute('hidden')) return;
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
     });
 
     // Device switch
