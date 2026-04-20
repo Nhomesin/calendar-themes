@@ -11,8 +11,7 @@ async function requireLocation(req, res, next) {
     return res.status(400).json({ error: 'locationId is required' });
   }
 
-  // locationQueries.get() is a function in our sql.js wrapper
-  const location = locationQueries.get(locationId);
+  const location = await locationQueries.get(locationId);
 
   if (!location) {
     return res.status(404).json({ error: 'Location not found. App may not be installed.' });

@@ -94,7 +94,7 @@ router.get('/callback', async (req, res) => {
       // Non-fatal
     }
 
-    locationQueries.upsert({
+    await locationQueries.upsert({
       location_id: resolvedLocationId,
       access_token,
       refresh_token,
@@ -133,7 +133,7 @@ async function refreshAccessToken(location) {
 
   const { access_token, refresh_token, expires_in } = tokenRes.data;
 
-  locationQueries.updateTokens({
+  await locationQueries.updateTokens({
     location_id: location.location_id,
     access_token,
     refresh_token,

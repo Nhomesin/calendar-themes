@@ -69,16 +69,17 @@ app.get('/api/presets', (req, res) => {
 
 // ── Embed page — themed calendar booking ─────────────────────────────────────
 // GET /embed/:locationId/:calendarId
-app.get('/embed/:locationId/:calendarId', (req, res) => {
+app.get('/embed/:locationId/:calendarId', async (req, res, next) => {
+  try {
   const { locationId, calendarId } = req.params;
   const name = req.query.name || 'Book an Appointment';
 
   // Look up theme assignment for this calendar
-  const assignment = assignmentQueries.getByCalendar(calendarId);
+  const assignment = await assignmentQueries.getByCalendar(calendarId);
 
   if (assignment) {
     // Custom theme assigned — serve the custom booking UI
-    const theme = themeQueries.get(assignment.theme_id);
+    const theme = await themeQueries.get(assignment.theme_id);
     const config = theme ? theme.config : getDefaultConfig();
 
     const tmplPath = path.join(__dirname, '../public/embed.html');
@@ -108,6 +109,9 @@ app.get('/embed/:locationId/:calendarId', (req, res) => {
 
     res.setHeader('Content-Type', 'text/html');
     res.send(html);
+  }
+  } catch (err) {
+    next(err);
   }
 });
 
