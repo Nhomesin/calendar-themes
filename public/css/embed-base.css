@@ -133,6 +133,17 @@ html, body {
 
 .ct-step.active { display: block; }
 
+/* Form + confirm stay narrow and centered, even when the widget shell is
+   wider (sidebar / single-page / combined layouts). The embed size itself
+   doesn't shrink — just the content block. */
+.ct-step-form,
+.ct-step-confirm {
+  width: 100%;
+  max-width: 380px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
 @keyframes ct-fade-in {
   from { opacity: 0; transform: translateX(12px); }
   to   { opacity: 1; transform: translateX(0); }
