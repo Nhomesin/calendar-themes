@@ -124,7 +124,6 @@ html, body {
 .ct-main {
   flex: 1;
   position: relative;
-  overflow: hidden;
 }
 
 .ct-step {
@@ -616,14 +615,14 @@ html, body {
 
 /* ── Sidebar Layout ──────────────────────────────────────────────────────── */
 
-.layout-sidebar .ct-main {
+/* Sidebar shows calendar + time side-by-side as a single "split" view. Every
+   other step (form, confirm) renders solo, full-width. The renderer adds the
+   `is-split-view` class only while the split view is actually visible. */
+.is-split-view .ct-main {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--ct-padding);
 }
-
-.layout-sidebar .ct-step { display: block; }
-.layout-sidebar .ct-step-confirm { grid-column: 1 / -1; }
 
 /* ── Combined Calendar + Time ────────────────────────────────────────────── */
 
@@ -633,22 +632,22 @@ html, body {
   gap: var(--ct-padding);
 }
 
+/* Let the time panel grow with its content — no localized scroll. The host
+   iframe should resize to fit; add height there if a bounded region is needed. */
 .ct-combined-time {
-  max-height: 360px;
-  overflow-y: auto;
+  min-width: 0;
 }
 
 /* ── Responsive ──────────────────────────────────────────────────────────── */
 
 /* Tablet and below — stack two-column layouts */
 @media (max-width: 640px) {
-  .layout-sidebar .ct-main {
+  .is-split-view .ct-main {
     grid-template-columns: 1fr;
   }
   .ct-combined {
     grid-template-columns: 1fr;
   }
-  .ct-combined-time { max-height: none; }
 }
 
 /* Mobile — tighten spacing, drop slot columns */

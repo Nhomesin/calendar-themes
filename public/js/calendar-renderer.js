@@ -166,11 +166,22 @@ class CalendarRenderer {
     const comp = this.config.components || {};
     const hasCombined = this.steps.includes('calendar+time');
 
+    // Clamp currentStep to a valid non-confirm step unless a booking has been attempted.
+    // Confirm is a terminal view — it must only show when `bookingResult` is set.
+    const confirmIdx = this.steps.indexOf('confirm');
+    if (!this.bookingResult && confirmIdx !== -1 && this.currentStep === confirmIdx) {
+      this.currentStep = Math.max(0, confirmIdx - 1);
+    }
+
+    const activeSteps = this.resolveActiveSteps(layout);
+    const isSplitView = layout === 'sidebar' && activeSteps.length > 1;
+
     // Create inner wrapper — never clobber the container's own class/id
     const classes = [];
     if (layout === 'sidebar')     classes.push('layout-sidebar');
     if (layout === 'single-page') classes.push('layout-single-page');
     if (hasCombined)              classes.push('flow-combined');
+    if (isSplitView)              classes.push('is-split-view');
     if (isTransparentColor((this.config.colors || {}).background)) classes.push('is-transparent');
 
     const app = el('div', classes.join(' '));
@@ -186,7 +197,7 @@ class CalendarRenderer {
       app.appendChild(header);
     }
 
-    // Progress bar
+    // Progress bar (only for step-by-step flow)
     if (comp.showProgressBar !== false && layout === 'multi-step') {
       const progress = el('div', 'ct-progress');
       this.steps.forEach((_, i) => {
@@ -202,17 +213,12 @@ class CalendarRenderer {
     const main = el('div', 'ct-main');
     this.els.main = main;
 
-    // Build each step
-    this.steps.forEach((stepName, i) => {
-      const section = el('div', `ct-step ct-step-${stepName.replace('+', '-')}`);
+    // Build only the currently-visible step group
+    activeSteps.forEach(stepName => {
+      const section = el('div', `ct-step ct-step-${stepName.replace('+', '-')} active`);
       if (layout === 'multi-step') {
-        if (i === this.currentStep) {
-          section.classList.add('active');
-          const anim = (this.config.animations && this.config.animations.stepTransition) || 'slide-left';
-          if (anim !== 'none') section.classList.add(`animate-${anim}`);
-        }
-      } else {
-        section.classList.add('active');
+        const anim = (this.config.animations && this.config.animations.stepTransition) || 'slide-left';
+        if (anim !== 'none') section.classList.add(`animate-${anim}`);
       }
       this.renderStep(section, stepName);
       main.appendChild(section);
@@ -245,6 +251,39 @@ class CalendarRenderer {
       case 'form':          this.renderForm(container); break;
       case 'confirm':       this.renderConfirmation(container); break;
     }
+  }
+
+  // Decide which step name(s) to render for the current view.
+  // - bookingResult present: terminal confirm screen
+  // - sidebar layout: group calendar + time into one split view, everything else solo
+  // - other layouts: one step at a time (multi-step) / all at once (single-page)
+  resolveActiveSteps(layout) {
+    if (this.bookingResult) {
+      return this.steps.includes('confirm') ? ['confirm'] : [this.steps[this.currentStep]];
+    }
+
+    const currentStepName = this.steps[this.currentStep];
+
+    if (layout === 'sidebar') {
+      if (currentStepName === 'calendar' || currentStepName === 'time') {
+        return this.steps.filter(s => s === 'calendar' || s === 'time');
+      }
+      return [currentStepName];
+    }
+
+    if (layout === 'single-page') {
+      return this.steps.filter(s => s !== 'confirm');
+    }
+
+    // multi-step
+    return [currentStepName];
+  }
+
+  // Index of the final step that collects user input (the step right before confirm).
+  // Submitting past this step triggers the actual booking.
+  lastInputStepIndex() {
+    const confirmIdx = this.steps.indexOf('confirm');
+    return confirmIdx === -1 ? this.steps.length - 1 : confirmIdx - 1;
   }
 
   // ── Calendar Grid ───────────────────────────────────────────────────────
@@ -312,7 +351,14 @@ class CalendarRenderer {
         if (dayEl.classList.contains('disabled')) return;
         this.selectedDate = dateStr;
         this.selectedSlot = null;
-        this.goToStep(this.steps.indexOf('time'));
+        const layout = (this.config.layout && this.config.layout.type) || 'multi-step';
+        const bothVisible = (layout === 'sidebar' || layout === 'single-page') && this.steps.includes('time');
+        if (bothVisible) {
+          // Time panel already visible in this view — just refresh it in-place.
+          this.render();
+        } else {
+          this.goToStep(this.steps.indexOf('time'));
+        }
       };
 
       days.appendChild(dayEl);
@@ -387,7 +433,8 @@ class CalendarRenderer {
       if (this.selectedSlot === slot) slotEl.classList.add('selected');
       slotEl.onclick = () => {
         this.selectedSlot = slot;
-        this.goToStep(this.steps.indexOf('form'));
+        // Inline slot grid belongs to the 'calendar+time' combined step.
+        this.advanceFromStep(this.steps.indexOf('calendar+time'));
       };
       grid.appendChild(slotEl);
     });
@@ -402,7 +449,7 @@ class CalendarRenderer {
       const empty = el('div', 'ct-slots-empty');
       empty.textContent = 'Select a date first';
       container.appendChild(empty);
-      this.addBackButton(container, 'calendar');
+      this.addTimeBack(container);
       return;
     }
 
@@ -418,7 +465,7 @@ class CalendarRenderer {
       const empty = el('div', 'ct-slots-empty');
       empty.textContent = 'No available times for this date';
       container.appendChild(empty);
-      this.addBackButton(container, 'calendar');
+      this.addTimeBack(container);
       return;
     }
 
@@ -431,13 +478,22 @@ class CalendarRenderer {
       if (this.selectedSlot === slot) slotEl.classList.add('selected');
       slotEl.onclick = () => {
         this.selectedSlot = slot;
-        this.goToStep(this.steps.indexOf('form'));
+        this.advanceFromStep(this.steps.indexOf('time'));
       };
       grid.appendChild(slotEl);
     });
 
     container.appendChild(grid);
-    this.addBackButton(container, 'calendar');
+    this.addTimeBack(container);
+  }
+
+  // Back button for the time-slots step. Points to the previous step in flow order
+  // (usually calendar), or nothing if time is the entry step.
+  addTimeBack(container) {
+    const timeIdx = this.steps.indexOf('time');
+    if (timeIdx <= 0) return;
+    const prev = this.steps[timeIdx - 1];
+    this.addBackButton(container, prev);
   }
 
   // ── Booking Form ────────────────────────────────────────────────────────
@@ -488,6 +544,10 @@ class CalendarRenderer {
       input.name = field.name;
       input.placeholder = field.placeholder || '';
       if (field.required) input.required = true;
+      // Restore previously entered value when returning to this step.
+      if (this.formData && this.formData[field.name] != null) {
+        input.value = this.formData[field.name];
+      }
       fieldWrap.appendChild(input);
 
       const errMsg = el('div', 'ct-field-error');
@@ -498,16 +558,20 @@ class CalendarRenderer {
     });
 
     const comp = this.config.components || {};
+    const formIdx = this.steps.indexOf('form');
+    const isFinalInput = formIdx === this.lastInputStepIndex();
     const submitBtn = el('button', 'ct-btn ct-btn-primary');
     submitBtn.type = 'submit';
-    submitBtn.textContent = comp.confirmButtonText || 'Confirm Booking';
+    submitBtn.textContent = isFinalInput
+      ? (comp.confirmButtonText || 'Confirm Booking')
+      : 'Continue';
     this.els.submitBtn = submitBtn;
     form.appendChild(submitBtn);
 
     container.appendChild(form);
-    // Back goes to time step, or combined step if using calendar+time
-    const backTarget = this.steps.includes('calendar+time') ? 'calendar+time' : 'time';
-    this.addBackButton(container, backTarget);
+    // Back always points at the immediately previous step in the configured order.
+    const prev = formIdx > 0 ? this.steps[formIdx - 1] : null;
+    if (prev) this.addBackButton(container, prev);
   }
 
   async handleSubmit(form) {
@@ -526,31 +590,47 @@ class CalendarRenderer {
 
     if (!valid) return;
 
-    // Collect form data
+    // Collect form data — kept on the instance so it's available whenever
+    // the booking actually fires (form may come before calendar/time).
     const data = {};
     fields.forEach(f => { data[f.name] = f.value.trim(); });
+    this.formData = data;
+
+    await this.advanceFromStep(this.steps.indexOf('form'));
+  }
+
+  // Advance past the given step. If it is the final input step, submit the booking;
+  // otherwise jump to the next step in the flow.
+  async advanceFromStep(fromStepIndex) {
+    const lastInput = this.lastInputStepIndex();
+    if (fromStepIndex >= lastInput) {
+      await this.submitBooking();
+      return;
+    }
+    this.goToStep(fromStepIndex + 1);
+  }
+
+  async submitBooking() {
+    const data = { ...(this.formData || {}) };
     data.startTime = this.selectedSlot;
     data.timezone = this.timezone;
 
-    // Calculate endTime (assume 30 min slot if not specified)
     if (data.startTime) {
       const start = new Date(data.startTime);
       const end = new Date(start.getTime() + 30 * 60 * 1000);
       data.endTime = end.toISOString();
     }
 
-    // Disable button
     if (this.els.submitBtn) {
       this.els.submitBtn.disabled = true;
       this.els.submitBtn.textContent = 'Booking...';
     }
 
     if (this.previewMode) {
-      // In preview, just simulate success
       setTimeout(() => {
         this.bookingResult = { ok: true };
         this.goToStep(this.steps.indexOf('confirm'));
-      }, 800);
+      }, 600);
       return;
     }
 
@@ -593,7 +673,12 @@ class CalendarRenderer {
       const retryBtn = el('button', 'ct-btn ct-btn-primary');
       retryBtn.textContent = 'Try Again';
       retryBtn.style.marginTop = '16px';
-      retryBtn.onclick = () => this.goToStep(this.steps.indexOf('form'));
+      retryBtn.onclick = () => {
+        // Clear the error, drop the user back on the final input step
+        // so we don't keep them stranded on a screen that was never booked.
+        this.bookingResult = null;
+        this.goToStep(this.lastInputStepIndex());
+      };
       confirm.appendChild(retryBtn);
     }
 
@@ -626,7 +711,15 @@ class CalendarRenderer {
 
   addBackButton(container, targetStep) {
     const layout = (this.config.layout && this.config.layout.type) || 'multi-step';
-    if (layout !== 'multi-step') return;
+    // single-page shows every input at once, so "Back" has no meaning.
+    if (layout === 'single-page') return;
+    // In sidebar, calendar and time share one view — no back button within the split.
+    if (layout === 'sidebar') {
+      const current = this.steps[this.currentStep];
+      if (current === 'calendar' || current === 'time') return;
+    }
+    // Can't go back from the first step.
+    if (this.currentStep <= 0) return;
 
     const nav = el('div', 'ct-nav-buttons');
     const backBtn = el('button', 'ct-btn ct-btn-secondary');

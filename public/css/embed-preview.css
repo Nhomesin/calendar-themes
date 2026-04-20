@@ -113,7 +113,6 @@
 .preview-frame .ct-main {
   flex: 1;
   position: relative;
-  overflow: hidden;
 }
 
 .preview-frame .ct-step {
@@ -525,16 +524,13 @@
   opacity: 0.4;
 }
 
-/* ── Sidebar Layout ──────────────────────────────────────────────────────── */
+/* ── Sidebar / Split View ────────────────────────────────────────────────── */
 
-.preview-frame .layout-sidebar .ct-main {
+.preview-frame .is-split-view .ct-main {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--ct-padding);
 }
-
-.preview-frame .layout-sidebar .ct-step { display: block; }
-.preview-frame .layout-sidebar .ct-step-confirm { grid-column: 1 / -1; }
 
 /* ── Combined Calendar + Time ────────────────────────────────────────────── */
 
@@ -544,28 +540,20 @@
   gap: var(--ct-padding);
 }
 
-.preview-frame .ct-combined-time {
-  max-height: 360px;
-  overflow-y: auto;
-}
+.preview-frame .ct-combined-time { min-width: 0; }
 
 /* Stack when the frame itself is narrow (mobile device toggle) */
 .preview-frame.device-mobile .ct-combined,
-.preview-frame.device-mobile .layout-sidebar .ct-main {
+.preview-frame.device-mobile .is-split-view .ct-main {
   grid-template-columns: 1fr;
-}
-
-.preview-frame.device-mobile .ct-combined-time {
-  max-height: none;
 }
 
 /* Also stack when the whole builder is on mobile */
 @media (max-width: 640px) {
   .preview-frame .ct-combined,
-  .preview-frame .layout-sidebar .ct-main {
+  .preview-frame .is-split-view .ct-main {
     grid-template-columns: 1fr;
   }
-  .preview-frame .ct-combined-time { max-height: none; }
 }
 
 /* Loading + spinner (preview scope) */
