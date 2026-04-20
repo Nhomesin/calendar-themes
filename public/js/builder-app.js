@@ -1273,8 +1273,50 @@
   // Form
 
   function renderFormPanel(body) {
+    if (!currentConfig.form) currentConfig.form = {};
+    // Default to calendar-sourced fields — that's what the user expects on a
+    // fresh theme. Users who've already customized fields still see 'custom'
+    // because they explicitly opted in at some point.
+    if (currentConfig.form.source !== 'custom') currentConfig.form.source = 'calendar';
+
+    const source = currentConfig.form.source;
     const fields = (currentConfig.form && currentConfig.form.fields) || [];
 
+    const sourceToggleHtml = `
+      <div class="section">
+        <div class="toggle-stack">
+          <div class="toggle-row rich">
+            <div class="toggle-row-text">
+              <div class="toggle-label">Use the calendar's attached form</div>
+              <div class="toggle-desc">Pulls fields from the form configured on this calendar in GHL. Turn off to design a custom form below.</div>
+            </div>
+            <div class="toggle ${source === 'calendar' ? 'on' : ''}" data-form-source-toggle></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    if (source === 'calendar') {
+      body.innerHTML = `
+        ${sectionHeader('Booking form', 'Fields collected on the final step')}
+        ${sourceToggleHtml}
+        <div class="section">
+          <div class="form-source-note">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 7.5v3.5M8 5.5v.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <div>
+              <div class="form-source-note-title">Fields come from GHL at render time</div>
+              <div class="form-source-note-body">Whatever form is attached to this calendar in GHL is rendered here using your custom design. Change the fields from inside GHL — or flip the toggle off to design a custom form.</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const srcToggle = body.querySelector('[data-form-source-toggle]');
+      if (srcToggle) srcToggle.onclick = () => toggleFormSource();
+      return;
+    }
+
+    // Custom mode — render the field editor as before.
     const itemsHtml = fields.map((f, i) => {
       const isEditing = editingFieldIndex === i;
       if (isEditing) return renderFormFieldEditor(f, i);
@@ -1299,6 +1341,7 @@
 
     body.innerHTML = `
       ${sectionHeader('Booking form', 'Fields collected on the final step')}
+      ${sourceToggleHtml}
       <div class="section">
         <div class="form-fields-list">${itemsHtml || '<div class="form-empty">No fields yet. Add one below.</div>'}</div>
         ${addingHtml}
@@ -1306,6 +1349,8 @@
       </div>
     `;
 
+    const srcToggle = body.querySelector('[data-form-source-toggle]');
+    if (srcToggle) srcToggle.onclick = () => toggleFormSource();
     body.querySelectorAll('[data-form-add]').forEach(b => b.onclick = () => { addingFormField = true; renderEditor(); });
     body.querySelectorAll('[data-form-edit]').forEach(b => b.onclick = e => { editingFieldIndex = parseInt(e.currentTarget.dataset.formEdit); addingFormField = false; renderEditor(); });
     body.querySelectorAll('[data-form-remove]').forEach(b => b.onclick = e => removeFormField(parseInt(e.currentTarget.dataset.formRemove)));
@@ -1315,6 +1360,15 @@
     });
 
     wireFormFieldEditor(body);
+  }
+
+  function toggleFormSource() {
+    if (!currentConfig.form) currentConfig.form = {};
+    currentConfig.form.source = currentConfig.form.source === 'calendar' ? 'custom' : 'calendar';
+    editingFieldIndex = -1;
+    addingFormField = false;
+    updatePreview();
+    renderEditor();
   }
 
   function renderFormFieldEditor(f, idx) {

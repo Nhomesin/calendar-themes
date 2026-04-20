@@ -49,30 +49,78 @@ router.get('/slots/:locationId/:calendarId', requireLocation, async (req, res) =
   }
 });
 
+// Keys that map to standard GHL contact properties. Everything else in the
+// submission body is treated as a custom field and forwarded via customFields.
+const STANDARD_CONTACT_KEYS = new Set([
+  'name', 'firstName', 'lastName', 'email', 'phone', 'notes', 'message',
+  'startTime', 'endTime', 'timezone', 'title',
+]);
+
+// Reserved submission keys that must never be leaked into the GHL contact payload.
+const IGNORED_KEYS = new Set([
+  'startTime', 'endTime', 'timezone', 'title', 'notes', 'message',
+]);
+
+// Normalize a submission body into { contactFields, customFields, extras }.
+//   contactFields -> firstName, lastName, email, phone
+//   customFields  -> array of { id, key, value } for everything else
+function splitSubmission(body) {
+  const contactFields = {
+    firstName: '',
+    lastName: '',
+    email: body.email || '',
+    phone: body.phone || '',
+  };
+
+  if (body.firstName || body.lastName) {
+    contactFields.firstName = (body.firstName || 'Guest').trim();
+    contactFields.lastName = (body.lastName || '').trim();
+  } else {
+    const parts = (body.name || '').trim().split(/\s+/);
+    contactFields.firstName = parts[0] || 'Guest';
+    contactFields.lastName = parts.slice(1).join(' ') || '';
+  }
+
+  const customFields = [];
+  for (const [key, value] of Object.entries(body || {})) {
+    if (STANDARD_CONTACT_KEYS.has(key) || IGNORED_KEYS.has(key)) continue;
+    if (value == null || value === '') continue;
+
+    // GHL custom field ids are 24-char hex ObjectIds. Send id when we have one;
+    // otherwise pass the key so GHL can match by field key.
+    if (/^[a-f0-9]{24}$/i.test(key)) {
+      customFields.push({ id: key, value });
+    } else {
+      customFields.push({ key, value });
+    }
+  }
+
+  return { contactFields, customFields };
+}
+
 // POST /api/book/:locationId/:calendarId — create contact + appointment
 router.post('/book/:locationId/:calendarId', requireLocation, async (req, res) => {
   const { calendarId, locationId } = req.params;
-  const { name, email, phone, notes, startTime, endTime, timezone } = req.body;
+  const body = req.body || {};
+  const { startTime, endTime, timezone } = body;
 
-  if (!email || !startTime || !endTime) {
+  if (!body.email || !startTime || !endTime) {
     return res.status(400).json({ error: 'email, startTime, and endTime are required' });
   }
 
-  // Split name into first/last
-  const parts = (name || '').trim().split(/\s+/);
-  const firstName = parts[0] || 'Guest';
-  const lastName = parts.slice(1).join(' ') || '';
+  const { contactFields, customFields } = splitSubmission(body);
 
   try {
     // 1. Create or find contact
     let contactId;
     try {
       const contact = await createContact(req.accessToken, locationId, {
-        firstName,
-        lastName,
-        email,
-        phone: phone || '',
+        firstName: contactFields.firstName,
+        lastName: contactFields.lastName,
+        email: contactFields.email,
+        phone: contactFields.phone,
         timezone: timezone || 'America/New_York',
+        customFields: customFields.length ? customFields : undefined,
       });
       contactId = contact.id || contact.contactId;
     } catch (err) {
@@ -94,8 +142,8 @@ router.post('/book/:locationId/:calendarId', requireLocation, async (req, res) =
       contactId,
       startTime,
       endTime,
-      title: `Booking by ${firstName} ${lastName}`.trim(),
-      notes: notes || '',
+      title: `Booking by ${contactFields.firstName} ${contactFields.lastName}`.trim(),
+      notes: body.notes || body.message || '',
     });
 
     res.status(201).json({

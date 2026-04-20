@@ -62,6 +62,9 @@ function getDefaultConfig() {
       successMessage: "You're all set! Check your email for confirmation.",
     },
     form: {
+      // 'calendar' pulls fields live from the calendar's attached form in GHL.
+      // 'custom' uses the fields[] below (edited in the builder).
+      source: 'calendar',
       fields: [
         { name: 'name', label: 'Full Name', type: 'text', required: true, placeholder: 'John Doe' },
         { name: 'email', label: 'Email', type: 'email', required: true, placeholder: 'john@example.com' },

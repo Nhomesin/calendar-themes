@@ -39,6 +39,106 @@ async function getCalendar(accessToken, calendarId) {
   return res.data?.calendar || res.data || null;
 }
 
+// Fetch a single form definition by id, best-effort. GHL's v2 public API doesn't
+// officially document a /forms/{id} endpoint yet, so this may 404 — callers
+// should handle null.
+async function getForm(accessToken, formId) {
+  const client = ghlClient(accessToken);
+  try {
+    const res = await client.get(`/forms/${formId}`);
+    return res.data?.form || res.data || null;
+  } catch {
+    return null;
+  }
+}
+
+// List forms for a location. Returns an array of form summaries (id, name, …).
+async function listForms(accessToken, locationId) {
+  const client = ghlClient(accessToken);
+  try {
+    const res = await client.get('/forms/', { params: { locationId } });
+    return res.data?.forms || res.data || [];
+  } catch {
+    return [];
+  }
+}
+
+// Location custom-field definitions. Used to resolve the GHL ids + labels for
+// fields that may appear in a calendar's form.
+async function getLocationCustomFields(accessToken, locationId) {
+  const client = ghlClient(accessToken);
+  try {
+    const res = await client.get('/locations/' + locationId + '/customFields');
+    return res.data?.customFields || res.data || [];
+  } catch {
+    return [];
+  }
+}
+
+// Normalize one of GHL's many field shapes into the renderer's
+// { name, label, type, required, placeholder, options?, ghlId? }.
+function normalizeGhlField(f) {
+  if (!f) return null;
+  const rawType = String(f.type || f.fieldType || f.dataType || f.dataTypeKey || 'text').toLowerCase();
+  let type = 'text';
+  if (rawType.includes('email')) type = 'email';
+  else if (rawType.includes('phone') || rawType.includes('tel')) type = 'tel';
+  else if (rawType.includes('textarea') || rawType.includes('paragraph') || rawType.includes('multiline') || rawType === 'large_text') type = 'textarea';
+  else if (rawType.includes('select') || rawType.includes('dropdown') || rawType.includes('picklist') || rawType === 'single_options' || rawType === 'radio') type = 'select';
+  else if (rawType.includes('number') || rawType === 'numerical') type = 'number';
+
+  const name = f.fieldKey || f.key || f.name || f.id || f._id;
+  if (!name) return null;
+
+  const options = f.options || f.picklistOptions || f.picklist;
+  return {
+    name,
+    label: f.label || f.title || f.name || name,
+    type,
+    required: !!(f.required || f.isRequired),
+    placeholder: f.placeholder || '',
+    ...(options ? { options: Array.isArray(options) ? options : [] } : {}),
+    ...(f.id || f._id ? { ghlId: f.id || f._id } : {}),
+  };
+}
+
+// Resolve the fields for the form attached to a calendar. GHL doesn't surface
+// this cleanly in v2, so we try multiple shapes and fall back gracefully.
+async function getCalendarFormFields(accessToken, locationId, calendarId) {
+  try {
+    const cal = await getCalendar(accessToken, calendarId);
+    if (!cal) return null;
+
+    // Option 1: calendar itself carries the field definitions inline.
+    const inline =
+      cal.formFields ||
+      cal.customQuestions ||
+      cal.questions ||
+      (cal.form && cal.form.fields);
+    if (Array.isArray(inline) && inline.length) {
+      const mapped = inline.map(normalizeGhlField).filter(Boolean);
+      if (mapped.length) return mapped;
+    }
+
+    // Option 2: calendar references a form id — try to fetch the form directly.
+    const formId = cal.formId || cal.customFormId || (cal.form && cal.form.id);
+    if (formId) {
+      const form = await getForm(accessToken, formId);
+      const fields =
+        form && (form.fields || form.customFields || form.formFields);
+      if (Array.isArray(fields) && fields.length) {
+        const mapped = fields.map(normalizeGhlField).filter(Boolean);
+        if (mapped.length) return mapped;
+      }
+    }
+
+    return null;
+  } catch (err) {
+    console.warn('[CalForm] Fetch error:', err?.response?.data || err.message);
+    return null;
+  }
+}
+
 async function getFreeSlots(accessToken, calendarId, startDate, endDate, timezone) {
   const client = ghlClient(accessToken);
 
@@ -56,7 +156,7 @@ async function getFreeSlots(accessToken, calendarId, startDate, endDate, timezon
   return res.data || {};
 }
 
-async function createContact(accessToken, locationId, { firstName, lastName, email, phone, timezone }) {
+async function createContact(accessToken, locationId, { firstName, lastName, email, phone, timezone, customFields }) {
   const client = ghlClient(accessToken);
   const res = await client.post('/contacts/', {
     locationId,
@@ -65,6 +165,7 @@ async function createContact(accessToken, locationId, { firstName, lastName, ema
     email,
     phone: phone || undefined,
     timezone: timezone || undefined,
+    customFields: Array.isArray(customFields) && customFields.length ? customFields : undefined,
   });
   return res.data?.contact || res.data || {};
 }
@@ -133,7 +234,11 @@ module.exports = {
   getCalendars,
   getCalendarGroups,
   getCalendar,
+  getCalendarFormFields,
   getLocation,
+  getLocationCustomFields,
+  getForm,
+  listForms,
   getFreeSlots,
   createContact,
   createAppointment,

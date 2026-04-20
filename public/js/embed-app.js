@@ -28,7 +28,6 @@
 
   const baseUrl = window.location.origin;
 
-  // Fetch available time slots from the server proxy
   async function fetchSlots(startDate, endDate, timezone) {
     const tz = encodeURIComponent(timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York');
     const url = `${baseUrl}/api/slots/${locationId}/${calendarId}?startDate=${startDate}&endDate=${endDate}&timezone=${tz}`;
@@ -37,7 +36,6 @@
     return res.json();
   }
 
-  // Submit booking through the server proxy
   async function submitBooking(formData) {
     const url = `${baseUrl}/api/book/${locationId}/${calendarId}`;
     const res = await fetch(url, {
@@ -50,12 +48,43 @@
     return data;
   }
 
-  // Boot the renderer
-  const renderer = new CalendarRenderer(container, themeConfig, {
-    previewMode: false,
-    onFetchSlots: fetchSlots,
-    onBook: submitBooking,
-  });
+  // Fetch the form attached to this calendar. Best-effort: returns null when
+  // GHL doesn't expose the form definition for this calendar.
+  async function fetchCalendarForm() {
+    try {
+      const res = await fetch(`${baseUrl}/api/calendars/${locationId}/${calendarId}/form`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data && Array.isArray(data.fields) ? data.fields : null;
+    } catch {
+      return null;
+    }
+  }
 
-  renderer.init();
+  // Decide which fields the booking form should render. Theme with
+  // form.source === 'custom' always wins; otherwise prefer the calendar's
+  // attached form, falling back to whatever the theme already specifies.
+  function resolveFormFields(themeCfg, ghlFields) {
+    const f = themeCfg.form || {};
+    if (f.source === 'custom' && Array.isArray(f.fields) && f.fields.length) {
+      return f.fields;
+    }
+    if (ghlFields && ghlFields.length) return ghlFields;
+    return Array.isArray(f.fields) && f.fields.length ? f.fields : null;
+  }
+
+  (async function boot() {
+    const ghlFields = await fetchCalendarForm();
+    const fields = resolveFormFields(themeConfig, ghlFields);
+    const mergedConfig = fields
+      ? { ...themeConfig, form: { ...(themeConfig.form || {}), fields } }
+      : themeConfig;
+
+    const renderer = new CalendarRenderer(container, mergedConfig, {
+      previewMode: false,
+      onFetchSlots: fetchSlots,
+      onBook: submitBooking,
+    });
+    renderer.init();
+  })();
 })();
