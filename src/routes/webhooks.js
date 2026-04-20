@@ -1,25 +1,31 @@
 const router = require('express').Router();
-const { locationQueries } = require('../db');
+const { companyQueries, locationQueries } = require('../db');
 
 // GHL sends ALL webhook events to a single URL.
 // The event type is in req.body.type — branch on that.
 router.post('/', async (req, res) => {
-  const { type, locationId } = req.body;
+  const { type, locationId, companyId } = req.body;
 
-  console.log(`[Webhook] Event received: type=${type} locationId=${locationId}`);
+  console.log(`[Webhook] Event received: type=${type} locationId=${locationId || '-'} companyId=${companyId || '-'}`);
 
   try {
     switch (type) {
       case 'INSTALL':
         // OAuth callback already stores the tokens.
         // This is a backup confirmation signal.
-        console.log(`[Webhook] Install confirmed for location: ${locationId}`);
+        console.log(`[Webhook] Install confirmed (locationId=${locationId || '-'}, companyId=${companyId || '-'})`);
         break;
 
       case 'UNINSTALL':
+        // An UNINSTALL carries one of locationId or companyId depending on
+        // the install scope. Deactivate whichever was supplied.
         if (locationId) {
           await locationQueries.deactivate(locationId);
           console.log(`[Webhook] Uninstall — deactivated location: ${locationId}`);
+        }
+        if (companyId) {
+          await companyQueries.deactivate(companyId);
+          console.log(`[Webhook] Uninstall — deactivated company: ${companyId}`);
         }
         break;
 

@@ -14,17 +14,39 @@
 --     here first — never disable RLS as a shortcut.
 -- ─────────────────────────────────────────────────────────────────────────────
 
+-- GHL agency (company-level) OAuth credentials. Populated only when the
+-- agency admin does a bulk install across their sub-accounts. Individual
+-- sub-account installs skip this table entirely.
+CREATE TABLE IF NOT EXISTS public.companies (
+  company_id          TEXT PRIMARY KEY,
+  access_token        TEXT     NOT NULL,
+  refresh_token       TEXT     NOT NULL,
+  token_expires_at    BIGINT   NOT NULL,                              -- epoch seconds
+  company_name        TEXT,
+  install_to_future   BOOLEAN  NOT NULL DEFAULT FALSE,                -- auto-provision new sub-accounts
+  plan_tier           TEXT     NOT NULL DEFAULT 'free',               -- free | agency (set by billing later)
+  installed_at        BIGINT   NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
+  active              SMALLINT NOT NULL DEFAULT 1
+);
+
 -- GHL sub-account OAuth credentials.
+-- `company_id` is set when the row was provisioned via an agency bulk install;
+-- null when a sub-account admin installed the app directly.
 CREATE TABLE IF NOT EXISTS public.locations (
   location_id       TEXT PRIMARY KEY,
   access_token      TEXT      NOT NULL,
   refresh_token     TEXT      NOT NULL,
   token_expires_at  BIGINT    NOT NULL,                               -- epoch seconds
-  company_id        TEXT,
+  company_id        TEXT      REFERENCES public.companies(company_id) ON DELETE SET NULL,
   location_name     TEXT,
+  plan_tier         TEXT      NOT NULL DEFAULT 'free',                -- free | subaccount (set by billing later)
   installed_at      BIGINT    NOT NULL DEFAULT EXTRACT(EPOCH FROM NOW())::BIGINT,
   active            SMALLINT  NOT NULL DEFAULT 1                      -- 1 = installed, 0 = uninstalled
 );
+
+-- Backfill columns for deployments migrated before this change.
+ALTER TABLE public.locations
+  ADD COLUMN IF NOT EXISTS plan_tier TEXT NOT NULL DEFAULT 'free';
 
 -- v2 themes: many per location, full JSON config.
 --
@@ -70,12 +92,17 @@ CREATE INDEX IF NOT EXISTS idx_assignments_theme    ON public.theme_assignments(
 -- keeps full access. anon/authenticated are then deny-by-default unless a
 -- policy below explicitly grants something.
 
+ALTER TABLE public.companies         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.locations         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.themes_v2         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.theme_assignments ENABLE ROW LEVEL SECURITY;
 
--- locations & theme_assignments: server-only. Explicit deny for clarity in
--- the dashboard. (Equivalent to "no policy" but self-documenting.)
+-- companies, locations, theme_assignments: server-only. Explicit deny for
+-- clarity in the dashboard. (Equivalent to "no policy" but self-documenting.)
+
+DROP POLICY IF EXISTS "deny public access" ON public.companies;
+CREATE POLICY "deny public access" ON public.companies
+  FOR ALL TO anon, authenticated USING (false) WITH CHECK (false);
 
 DROP POLICY IF EXISTS "deny public access" ON public.locations;
 CREATE POLICY "deny public access" ON public.locations

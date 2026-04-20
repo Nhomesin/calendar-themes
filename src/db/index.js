@@ -55,10 +55,23 @@ const locationQueries = {
       location_name: row.location_name || null,
       active: 1,
     };
+    // Only include plan_tier on explicit set so upserts don't clobber a
+    // row whose tier was promoted by billing.
+    if (row.plan_tier) payload.plan_tier = row.plan_tier;
     const { error } = await supabase
       .from('locations')
       .upsert(payload, { onConflict: 'location_id' });
     throwIfError(error, 'locations.upsert');
+  },
+
+  async listByCompany(companyId) {
+    const { data, error } = await supabase
+      .from('locations')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('active', 1);
+    throwIfError(error, 'locations.listByCompany');
+    return data || [];
   },
 
   async updateTokens(row) {
@@ -79,6 +92,58 @@ const locationQueries = {
       .update({ active: 0 })
       .eq('location_id', locationId);
     throwIfError(error, 'locations.deactivate');
+  },
+};
+
+// ── Companies (agency-level installs) ─────────────────────────────────────
+
+const companyQueries = {
+  async get(companyId) {
+    const { data, error } = await supabase
+      .from('companies')
+      .select('*')
+      .eq('company_id', companyId)
+      .eq('active', 1)
+      .maybeSingle();
+    throwIfError(error, 'companies.get');
+    return data || null;
+  },
+
+  async upsert(row) {
+    const payload = {
+      company_id: row.company_id,
+      access_token: row.access_token,
+      refresh_token: row.refresh_token,
+      token_expires_at: row.token_expires_at,
+      company_name: row.company_name || null,
+      install_to_future: !!row.install_to_future,
+      active: 1,
+    };
+    if (row.plan_tier) payload.plan_tier = row.plan_tier;
+    const { error } = await supabase
+      .from('companies')
+      .upsert(payload, { onConflict: 'company_id' });
+    throwIfError(error, 'companies.upsert');
+  },
+
+  async updateTokens(row) {
+    const { error } = await supabase
+      .from('companies')
+      .update({
+        access_token: row.access_token,
+        refresh_token: row.refresh_token,
+        token_expires_at: row.token_expires_at,
+      })
+      .eq('company_id', row.company_id);
+    throwIfError(error, 'companies.updateTokens');
+  },
+
+  async deactivate(companyId) {
+    const { error } = await supabase
+      .from('companies')
+      .update({ active: 0 })
+      .eq('company_id', companyId);
+    throwIfError(error, 'companies.deactivate');
   },
 };
 
@@ -234,6 +299,7 @@ const assignmentQueries = {
 
 module.exports = {
   initDb,
+  companyQueries,
   locationQueries,
   themeQueries,
   assignmentQueries,

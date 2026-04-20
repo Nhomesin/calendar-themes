@@ -78,6 +78,51 @@ async function createAppointment(accessToken, { calendarId, locationId, contactI
   return res.data || {};
 }
 
+// ── Agency (company-level) helpers ─────────────────────────────────────────
+
+// List every sub-account the agency has approved for this app.
+// Paginates internally; returns the full list.
+async function getInstalledLocations(companyAccessToken, companyId, appId) {
+  const client = ghlClient(companyAccessToken);
+  const out = [];
+  const limit = 200;
+  let skip = 0;
+
+  // Defensive cap — real agencies top out well below this.
+  const MAX_PAGES = 50;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await client.get('/oauth/installedLocations', {
+      params: { companyId, appId, limit, skip, isInstalled: true },
+    });
+    const batch = res.data?.locations || [];
+    out.push(...batch);
+    if (batch.length < limit) break;
+    skip += limit;
+  }
+
+  return out;
+}
+
+// Exchange a company-level access token for a location-scoped token.
+// This is how an agency-installed app gets per-sub-account credentials.
+async function getLocationTokenFromCompany(companyAccessToken, companyId, locationId) {
+  // This endpoint insists on form-encoded, not JSON — so we can't reuse ghlClient.
+  const res = await axios.post(
+    `${GHL_API_BASE}/oauth/locationToken`,
+    new URLSearchParams({ companyId, locationId }),
+    {
+      headers: {
+        Authorization: `Bearer ${companyAccessToken}`,
+        Version: API_VERSION,
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Accept: 'application/json',
+      },
+    }
+  );
+  return res.data;
+}
+
 module.exports = {
   getCalendars,
   getCalendar,
@@ -85,4 +130,6 @@ module.exports = {
   getFreeSlots,
   createContact,
   createAppointment,
+  getInstalledLocations,
+  getLocationTokenFromCompany,
 };
