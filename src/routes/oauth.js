@@ -40,8 +40,11 @@ router.get('/install', (req, res) => {
       'calendars.write',
       'calendars/events.readonly',
       'calendars/events.write',
+      'calendars/groups.readonly',
       'contacts.write',
+      'forms.readonly',
       'locations.readonly',
+      'locations/customFields.readonly',
     ].join(' '),
   });
 

@@ -1287,8 +1287,8 @@
         <div class="toggle-stack">
           <div class="toggle-row rich">
             <div class="toggle-row-text">
-              <div class="toggle-label">Use the calendar's attached form</div>
-              <div class="toggle-desc">Pulls fields from the form configured on this calendar in GHL. Turn off to design a custom form below.</div>
+              <div class="toggle-label">Pull fields from GHL</div>
+              <div class="toggle-desc">Renders the standard booking fields plus every contact custom field on this location. Turn off to design a fully custom form.</div>
             </div>
             <div class="toggle ${source === 'calendar' ? 'on' : ''}" data-form-source-toggle></div>
           </div>
@@ -1304,8 +1304,8 @@
           <div class="form-source-note">
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 7.5v3.5M8 5.5v.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
             <div>
-              <div class="form-source-note-title">Fields come from GHL at render time</div>
-              <div class="form-source-note-body">Whatever form is attached to this calendar in GHL is rendered here using your custom design. Change the fields from inside GHL — or flip the toggle off to design a custom form.</div>
+              <div class="form-source-note-title">Fields load from GHL at render time</div>
+              <div class="form-source-note-body">GHL's API doesn't expose which fields a specific calendar form uses, so we render the standard booking fields (name, email, phone) plus every contact custom field on the location. Flip the toggle off to hand-pick fields instead.</div>
             </div>
           </div>
         </div>

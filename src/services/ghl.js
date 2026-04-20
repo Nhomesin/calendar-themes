@@ -39,100 +39,97 @@ async function getCalendar(accessToken, calendarId) {
   return res.data?.calendar || res.data || null;
 }
 
-// Fetch a single form definition by id, best-effort. GHL's v2 public API doesn't
-// officially document a /forms/{id} endpoint yet, so this may 404 — callers
-// should handle null.
-async function getForm(accessToken, formId) {
-  const client = ghlClient(accessToken);
-  try {
-    const res = await client.get(`/forms/${formId}`);
-    return res.data?.form || res.data || null;
-  } catch {
-    return null;
-  }
-}
-
-// List forms for a location. Returns an array of form summaries (id, name, …).
+// List forms for a location. GHL's public v2 API only exposes { id, name,
+// locationId } per form — there is no endpoint to read a form's field list.
 async function listForms(accessToken, locationId) {
   const client = ghlClient(accessToken);
   try {
     const res = await client.get('/forms/', { params: { locationId } });
-    return res.data?.forms || res.data || [];
+    return res.data?.forms || [];
   } catch {
     return [];
   }
 }
 
-// Location custom-field definitions. Used to resolve the GHL ids + labels for
-// fields that may appear in a calendar's form.
-async function getLocationCustomFields(accessToken, locationId) {
+// Location custom-field definitions for contacts. Scope:
+// locations/customFields.readonly.
+async function getLocationCustomFields(accessToken, locationId, model = 'contact') {
   const client = ghlClient(accessToken);
   try {
-    const res = await client.get('/locations/' + locationId + '/customFields');
-    return res.data?.customFields || res.data || [];
-  } catch {
+    const res = await client.get(`/locations/${locationId}/customFields`, {
+      params: { model },
+    });
+    return res.data?.customFields || [];
+  } catch (err) {
+    console.warn('[CustomFields] Fetch error:', err?.response?.data || err.message);
     return [];
   }
 }
 
-// Normalize one of GHL's many field shapes into the renderer's
-// { name, label, type, required, placeholder, options?, ghlId? }.
-function normalizeGhlField(f) {
+// Map GHL's dataType strings (TEXT, LARGE_TEXT, PHONE, EMAIL, NUMERICAL,
+// SINGLE_OPTIONS, RADIO, CHECKBOX, DROPDOWN, DATE, FILE_UPLOAD, TEXTBOX_LIST, …)
+// onto the renderer's field types.
+function mapDataType(t) {
+  const s = String(t || '').toUpperCase();
+  if (s === 'EMAIL') return 'email';
+  if (s === 'PHONE') return 'tel';
+  if (s === 'LARGE_TEXT' || s === 'MULTILINE' || s === 'TEXTAREA') return 'textarea';
+  if (s === 'SINGLE_OPTIONS' || s === 'DROPDOWN' || s === 'RADIO') return 'select';
+  if (s === 'NUMERICAL' || s === 'NUMBER') return 'number';
+  return 'text';
+}
+
+// Normalize a location custom field (GHL CustomFieldSchema) into our renderer
+// shape. fieldKey is used as the field name so submission values flow back to
+// GHL with the correct mapping; ghlId is kept so the booking route can prefer
+// the id on createContact.
+function normalizeLocationCustomField(f) {
   if (!f) return null;
-  const rawType = String(f.type || f.fieldType || f.dataType || f.dataTypeKey || 'text').toLowerCase();
-  let type = 'text';
-  if (rawType.includes('email')) type = 'email';
-  else if (rawType.includes('phone') || rawType.includes('tel')) type = 'tel';
-  else if (rawType.includes('textarea') || rawType.includes('paragraph') || rawType.includes('multiline') || rawType === 'large_text') type = 'textarea';
-  else if (rawType.includes('select') || rawType.includes('dropdown') || rawType.includes('picklist') || rawType === 'single_options' || rawType === 'radio') type = 'select';
-  else if (rawType.includes('number') || rawType === 'numerical') type = 'number';
-
-  const name = f.fieldKey || f.key || f.name || f.id || f._id;
-  if (!name) return null;
-
-  const options = f.options || f.picklistOptions || f.picklist;
+  const key = f.fieldKey || f.name || f.id;
+  if (!key) return null;
   return {
-    name,
-    label: f.label || f.title || f.name || name,
-    type,
-    required: !!(f.required || f.isRequired),
+    name: key,
+    label: f.name || key,
+    type: mapDataType(f.dataType),
+    required: false, // GHL's custom-field schema doesn't carry form-level required flags.
     placeholder: f.placeholder || '',
-    ...(options ? { options: Array.isArray(options) ? options : [] } : {}),
-    ...(f.id || f._id ? { ghlId: f.id || f._id } : {}),
+    ...(Array.isArray(f.picklistOptions) && f.picklistOptions.length
+      ? { options: f.picklistOptions }
+      : {}),
+    ...(f.id ? { ghlId: f.id } : {}),
   };
 }
 
-// Resolve the fields for the form attached to a calendar. GHL doesn't surface
-// this cleanly in v2, so we try multiple shapes and fall back gracefully.
+// Standard contact fields a calendar's booking form always collects.
+function standardContactFields() {
+  return [
+    { name: 'firstName', label: 'First name', type: 'text', required: true, placeholder: 'Jane' },
+    { name: 'lastName',  label: 'Last name',  type: 'text', required: false, placeholder: 'Doe' },
+    { name: 'email',     label: 'Email',      type: 'email', required: true, placeholder: 'jane@example.com' },
+    { name: 'phone',     label: 'Phone',      type: 'tel',   required: false, placeholder: '+1 (555) 000-0000' },
+  ];
+}
+
+// Resolve the fields a calendar's form should render. GHL's public API does
+// NOT expose which custom fields are bound to a particular form, so the best
+// we can do is return the standard contact fields plus every contact-scoped
+// custom field defined on the location. Callers fall back to the theme's
+// configured fields when this returns null.
 async function getCalendarFormFields(accessToken, locationId, calendarId) {
   try {
+    // Pull the calendar only to confirm it exists / has a form attached.
+    // formId isn't currently load-bearing (no public endpoint reads a form's
+    // fields) but we keep the call so we return null when the calendar has no
+    // form configured.
     const cal = await getCalendar(accessToken, calendarId);
     if (!cal) return null;
 
-    // Option 1: calendar itself carries the field definitions inline.
-    const inline =
-      cal.formFields ||
-      cal.customQuestions ||
-      cal.questions ||
-      (cal.form && cal.form.fields);
-    if (Array.isArray(inline) && inline.length) {
-      const mapped = inline.map(normalizeGhlField).filter(Boolean);
-      if (mapped.length) return mapped;
-    }
+    const customs = await getLocationCustomFields(accessToken, locationId, 'contact');
+    const customFields = (customs || [])
+      .map(normalizeLocationCustomField)
+      .filter(Boolean);
 
-    // Option 2: calendar references a form id — try to fetch the form directly.
-    const formId = cal.formId || cal.customFormId || (cal.form && cal.form.id);
-    if (formId) {
-      const form = await getForm(accessToken, formId);
-      const fields =
-        form && (form.fields || form.customFields || form.formFields);
-      if (Array.isArray(fields) && fields.length) {
-        const mapped = fields.map(normalizeGhlField).filter(Boolean);
-        if (mapped.length) return mapped;
-      }
-    }
-
-    return null;
+    return [...standardContactFields(), ...customFields];
   } catch (err) {
     console.warn('[CalForm] Fetch error:', err?.response?.data || err.message);
     return null;
@@ -237,7 +234,6 @@ module.exports = {
   getCalendarFormFields,
   getLocation,
   getLocationCustomFields,
-  getForm,
   listForms,
   getFreeSlots,
   createContact,
