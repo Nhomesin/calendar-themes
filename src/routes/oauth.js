@@ -44,7 +44,10 @@ router.get('/callback', async (req, res) => {
   }
 
   try {
-    // Token exchange goes to services.leadconnectorhq.com, not marketplace
+    // Token exchange goes to services.leadconnectorhq.com, not marketplace.
+    // `user_type: 'Location'` is required — without it GHL returns a
+    // company-scoped token that has no locationId, which breaks the
+    // per-sub-account install model.
     const tokenRes = await axios.post(
       `${GHL_TOKEN_BASE}/oauth/token`,
       new URLSearchParams({
@@ -53,6 +56,7 @@ router.get('/callback', async (req, res) => {
         redirect_uri: GHL_REDIRECT_URI,
         client_id: GHL_CLIENT_ID,
         client_secret: GHL_CLIENT_SECRET,
+        user_type: 'Location',
       }),
       {
         headers: {
@@ -73,7 +77,17 @@ router.get('/callback', async (req, res) => {
     const resolvedLocationId = locationId || tokenLocationId;
 
     if (!resolvedLocationId) {
-      return res.status(400).send('Could not determine locationId from GHL response.');
+      // Log enough to diagnose without dumping the tokens themselves.
+      const diagnostic = {
+        query_location_id: locationId || null,
+        token_response_keys: Object.keys(tokenRes.data || {}),
+        companyId: companyId || null,
+        userType: tokenRes.data?.userType || tokenRes.data?.user_type || null,
+      };
+      console.error('[OAuth] No locationId resolvable:', diagnostic);
+      return res.status(400).send(
+        `Could not determine locationId from GHL response. Diagnostic: ${JSON.stringify(diagnostic)}`
+      );
     }
 
     // Fetch location name for display purposes
