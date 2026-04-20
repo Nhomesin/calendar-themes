@@ -21,6 +21,12 @@ async function getCalendars(accessToken, locationId) {
   return res.data?.calendars || [];
 }
 
+async function getCalendarGroups(accessToken, locationId) {
+  const client = ghlClient(accessToken);
+  const res = await client.get('/calendars/groups', { params: { locationId } });
+  return res.data?.groups || [];
+}
+
 async function getLocation(accessToken, locationId) {
   const client = ghlClient(accessToken);
   const res = await client.get(`/locations/${locationId}`);
@@ -125,6 +131,7 @@ async function getLocationTokenFromCompany(companyAccessToken, companyId, locati
 
 module.exports = {
   getCalendars,
+  getCalendarGroups,
   getCalendar,
   getLocation,
   getFreeSlots,

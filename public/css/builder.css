@@ -1744,11 +1744,18 @@ input[type="range"]::-moz-range-thumb {
 
 .drawer-head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  padding: 24px 24px 18px;
+  flex-direction: column;
+  gap: 14px;
+  padding: 22px 24px 16px;
   border-bottom: 1px solid var(--line-soft);
   flex-shrink: 0;
+}
+
+.drawer-head-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 .drawer-title {
@@ -1764,11 +1771,158 @@ input[type="range"]::-moz-range-thumb {
   color: var(--ink-mid);
 }
 
+.drawer-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  transition: border-color var(--med), background var(--med), box-shadow var(--med);
+}
+
+.drawer-search:focus-within {
+  border-color: var(--accent);
+  background: #fff;
+  box-shadow: var(--shadow-focus);
+}
+
+.drawer-search-icon {
+  position: absolute;
+  left: 12px;
+  width: 14px; height: 14px;
+  color: var(--ink-muted);
+  pointer-events: none;
+}
+
+.drawer-search:focus-within .drawer-search-icon { color: var(--accent); }
+
+.drawer-search input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 9px 36px 9px 34px;
+  letter-spacing: -.005em;
+}
+
+.drawer-search input::placeholder { color: var(--ink-muted); }
+
+.drawer-search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 22px; height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink-mid);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--fast), color var(--fast);
+}
+
+.drawer-search-clear svg { width: 12px; height: 12px; }
+.drawer-search-clear:hover { background: var(--surface-3); color: var(--ink); }
+.drawer-search-clear:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
 .drawer-body {
   flex: 1;
   overflow-y: auto;
-  padding: 20px 24px;
+  padding: 16px 24px 28px;
 }
+
+.drawer-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--ink-muted);
+}
+
+.drawer-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+.drawer-empty-sub {
+  font-size: 12.5px;
+  color: var(--ink-mid);
+}
+
+/* ── Collapsible groups ────────────────────────────────────────────────────*/
+
+.assign-group + .assign-group { margin-top: 10px; }
+
+.assign-group-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: var(--font);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -.005em;
+  color: var(--ink);
+  text-align: left;
+  transition: background var(--fast), border-color var(--fast);
+}
+
+.assign-group-head:hover { background: var(--surface-2); border-color: var(--ink-faint); }
+.assign-group-head:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+
+.assign-group-chev {
+  width: 12px; height: 12px;
+  color: var(--ink-mid);
+  flex-shrink: 0;
+  transition: transform var(--med);
+}
+
+.assign-group.collapsed .assign-group-chev { transform: rotate(0deg); }
+.assign-group:not(.collapsed) .assign-group-chev { transform: rotate(90deg); }
+
+.assign-group-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.assign-group-count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-mid);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 2px 8px;
+  line-height: 1.4;
+}
+
+.assign-group-body {
+  padding: 10px 2px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.assign-group.collapsed .assign-group-body { display: none; }
 
 .drawer-body::-webkit-scrollbar { width: 6px; }
 .drawer-body::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
@@ -1781,8 +1935,9 @@ input[type="range"]::-moz-range-thumb {
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 10px;
-  margin-bottom: 10px;
 }
+
+.assign-group-body .assignment-row { margin-bottom: 0; }
 
 .assignment-row-head {
   display: flex;

@@ -15,6 +15,7 @@
   let currentThemeId = null;
   let currentConfig = null;
   let calendars = [];
+  let calendarGroups = [];
   let assignments = [];
   let previewRenderer = null;
   let presets = [];
@@ -23,6 +24,9 @@
   let previewDevice = 'desktop';
   let editingFieldIndex = -1;
   let addingFormField = false;
+  let drawerSearchQuery = '';
+  const drawerCollapsed = new Set();
+  let drawerWired = false;
 
   // ── DOM refs ─────────────────────────────────────────────────────────────
   const $ = s => document.querySelector(s);
@@ -46,7 +50,11 @@
       ]);
 
       if (themesRes.ok) themes = (await themesRes.json()).themes || [];
-      if (calRes.ok) calendars = (await calRes.json()).calendars || [];
+      if (calRes.ok) {
+        const calData = await calRes.json();
+        calendars = calData.calendars || [];
+        calendarGroups = calData.groups || [];
+      }
       if (assignRes.ok) assignments = (await assignRes.json()).assignments || [];
       if (presetsRes.ok) presets = (await presetsRes.json()).presets || [];
     } catch (e) {
@@ -409,6 +417,16 @@
   // ═══════════════════════════════════════════════════════════════════════════
 
   function openAssignmentsDrawer() {
+    if (!drawerWired) {
+      wireDrawerSearch();
+      drawerWired = true;
+    }
+    drawerSearchQuery = '';
+    const input = $('#drawer-search-input');
+    const clear = $('#drawer-search-clear');
+    if (input) input.value = '';
+    if (clear) clear.hidden = true;
+
     renderAssignmentsDrawer();
     const drawer = $('#assignments-drawer');
     const backdrop = $('#drawer-backdrop');
@@ -417,6 +435,35 @@
     requestAnimationFrame(() => {
       drawer.classList.add('open');
       backdrop.classList.add('open');
+    });
+  }
+
+  function wireDrawerSearch() {
+    const input = $('#drawer-search-input');
+    const clear = $('#drawer-search-clear');
+    if (!input || !clear) return;
+
+    input.addEventListener('input', (e) => {
+      drawerSearchQuery = e.target.value;
+      clear.hidden = !drawerSearchQuery;
+      renderAssignmentsDrawer();
+    });
+    clear.addEventListener('click', () => {
+      input.value = '';
+      drawerSearchQuery = '';
+      clear.hidden = true;
+      renderAssignmentsDrawer();
+      input.focus();
+    });
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && drawerSearchQuery) {
+        // Swallow Escape so it clears search instead of closing the drawer.
+        e.stopPropagation();
+        input.value = '';
+        drawerSearchQuery = '';
+        clear.hidden = true;
+        renderAssignmentsDrawer();
+      }
     });
   }
 
@@ -443,44 +490,145 @@
       return;
     }
 
-    body.innerHTML = '';
-    calendars.forEach(cal => {
-      const assignment = assignments.find(a => a.calendar_id === cal.id);
-      const assignedThemeId = assignment ? assignment.theme_id : '';
-      const embedUrl = assignment ? `${BASE_URL}/embed/${LOC_ID}/${cal.id}` : '';
+    const q = drawerSearchQuery.trim().toLowerCase();
+    const filteredCals = q
+      ? calendars.filter(c => (c.name || '').toLowerCase().includes(q))
+      : calendars.slice();
 
-      const row = document.createElement('div');
-      row.className = 'assignment-row';
-      row.innerHTML = `
-        <div class="assignment-row-head">
-          <div class="assignment-cal-name">${escHtml(cal.name)}</div>
-          <div class="select-wrap assignment-theme-select" style="min-width:180px">
-            <select data-cal-id="${cal.id}" data-cal-name="${escHtml(cal.name)}">
-              <option value="">— No theme —</option>
-              ${themes.map(t => `<option value="${t.id}" ${t.id === assignedThemeId ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('')}
-            </select>
-          </div>
+    if (filteredCals.length === 0) {
+      body.innerHTML = `
+        <div class="drawer-empty">
+          <div class="drawer-empty-title">No calendars match</div>
+          <div class="drawer-empty-sub">Try a different search term.</div>
         </div>
-        ${embedUrl ? renderEmbedShare(embedUrl, cal.name) : ''}
+      `;
+      return;
+    }
+
+    const groupsForRender = buildDrawerGroups(filteredCals);
+    const searching = !!q;
+    body.innerHTML = '';
+
+    groupsForRender.forEach(grp => {
+      const collapsed = !searching && drawerCollapsed.has(grp.key);
+      const section = document.createElement('section');
+      section.className = 'assign-group' + (collapsed ? ' collapsed' : '');
+      section.dataset.groupKey = grp.key;
+      section.innerHTML = `
+        <button type="button" class="assign-group-head" aria-expanded="${!collapsed}">
+          <svg class="assign-group-chev" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+            <path d="M4 3l3 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="assign-group-name">${escHtml(grp.label)}</span>
+          <span class="assign-group-count">${grp.calendars.length}</span>
+        </button>
+        <div class="assign-group-body"></div>
       `;
 
-      const sel = row.querySelector('select');
-      sel.addEventListener('change', async (e) => {
-        const themeId = e.target.value;
-        if (themeId) {
-          await assignTheme(themeId, cal.id, cal.name);
-        } else {
-          const existing = assignments.find(a => a.calendar_id === cal.id);
-          if (existing) await unassignTheme(existing.id);
-        }
-        renderAssignmentsDrawer();
-        renderGallery();
+      const bodyEl = section.querySelector('.assign-group-body');
+      grp.calendars.forEach(cal => bodyEl.appendChild(buildAssignmentRow(cal)));
+
+      section.querySelector('.assign-group-head').addEventListener('click', () => {
+        if (drawerCollapsed.has(grp.key)) drawerCollapsed.delete(grp.key);
+        else drawerCollapsed.add(grp.key);
+        const nowCollapsed = drawerCollapsed.has(grp.key);
+        section.classList.toggle('collapsed', nowCollapsed);
+        section.querySelector('.assign-group-head').setAttribute('aria-expanded', String(!nowCollapsed));
       });
 
-      wireShareBlock(row, embedUrl, cal.name);
-
-      body.appendChild(row);
+      body.appendChild(section);
     });
+  }
+
+  // Group calendars for the drawer. Prefers GHL calendar groups; falls back to
+  // an A–Z bucketed list when the location has no groups configured.
+  function buildDrawerGroups(cals) {
+    const byName = (a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+    const sorted = cals.slice().sort(byName);
+
+    if (calendarGroups && calendarGroups.length) {
+      const groupsById = new Map();
+      calendarGroups.forEach(g => groupsById.set(g.id, g));
+
+      const bucket = new Map();
+      sorted.forEach(cal => {
+        const gid = cal.groupId || cal.calendarGroupId || '';
+        const key = gid || '__ungrouped__';
+        if (!bucket.has(key)) bucket.set(key, []);
+        bucket.get(key).push(cal);
+      });
+
+      const keys = [...bucket.keys()];
+      keys.sort((a, b) => {
+        if (a === '__ungrouped__') return 1;
+        if (b === '__ungrouped__') return -1;
+        const ga = groupsById.get(a);
+        const gb = groupsById.get(b);
+        return (ga?.name || '').localeCompare(gb?.name || '', undefined, { sensitivity: 'base' });
+      });
+
+      return keys.map(key => {
+        const cals = bucket.get(key);
+        if (key === '__ungrouped__') {
+          return { key, label: 'Ungrouped', calendars: cals };
+        }
+        const g = groupsById.get(key);
+        return { key, label: g?.name || 'Calendar group', calendars: cals };
+      });
+    }
+
+    // Fallback: bucket alphabetically by first letter of calendar name.
+    const bucket = new Map();
+    sorted.forEach(cal => {
+      const ch = (cal.name || '').trim().charAt(0).toUpperCase();
+      const key = /[A-Z]/.test(ch) ? ch : '#';
+      if (!bucket.has(key)) bucket.set(key, []);
+      bucket.get(key).push(cal);
+    });
+    const keys = [...bucket.keys()].sort((a, b) => {
+      if (a === '#') return 1;
+      if (b === '#') return -1;
+      return a.localeCompare(b);
+    });
+    return keys.map(key => ({ key: 'az:' + key, label: key, calendars: bucket.get(key) }));
+  }
+
+  function buildAssignmentRow(cal) {
+    const assignment = assignments.find(a => a.calendar_id === cal.id);
+    const assignedThemeId = assignment ? assignment.theme_id : '';
+    const embedUrl = assignment ? `${BASE_URL}/embed/${LOC_ID}/${cal.id}` : '';
+
+    const row = document.createElement('div');
+    row.className = 'assignment-row';
+    row.innerHTML = `
+      <div class="assignment-row-head">
+        <div class="assignment-cal-name">${escHtml(cal.name)}</div>
+        <div class="select-wrap assignment-theme-select" style="min-width:180px">
+          <select data-cal-id="${cal.id}" data-cal-name="${escHtml(cal.name)}">
+            <option value="">— No theme —</option>
+            ${themes.map(t => `<option value="${t.id}" ${t.id === assignedThemeId ? 'selected' : ''}>${escHtml(t.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      ${embedUrl ? renderEmbedShare(embedUrl, cal.name) : ''}
+    `;
+
+    const sel = row.querySelector('select');
+    sel.addEventListener('change', async (e) => {
+      const themeId = e.target.value;
+      if (themeId) {
+        await assignTheme(themeId, cal.id, cal.name);
+      } else {
+        const existing = assignments.find(a => a.calendar_id === cal.id);
+        if (existing) await unassignTheme(existing.id);
+      }
+      renderAssignmentsDrawer();
+      renderGallery();
+    });
+
+    wireShareBlock(row, embedUrl, cal.name);
+
+    return row;
   }
 
   // ── Embed share block ────────────────────────────────────────────────────

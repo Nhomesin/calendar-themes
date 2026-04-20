@@ -148,13 +148,22 @@
 <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
 <aside class="drawer" id="assignments-drawer" hidden aria-hidden="true">
   <header class="drawer-head">
-    <div>
-      <h2 class="drawer-title">Calendar assignments</h2>
-      <p class="drawer-sub">Pick which theme each calendar uses.</p>
+    <div class="drawer-head-top">
+      <div>
+        <h2 class="drawer-title">Calendar assignments</h2>
+        <p class="drawer-sub">Pick which theme each calendar uses.</p>
+      </div>
+      <button class="btn btn-ghost btn-icon" id="drawer-close" aria-label="Close">
+        <svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
     </div>
-    <button class="btn btn-ghost btn-icon" id="drawer-close" aria-label="Close">
-      <svg viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-    </button>
+    <div class="drawer-search" id="drawer-search">
+      <svg class="drawer-search-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.5"/><path d="m14 14-3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      <input type="text" id="drawer-search-input" placeholder="Search calendars…" autocomplete="off" spellcheck="false" aria-label="Search calendars">
+      <button type="button" class="drawer-search-clear" id="drawer-search-clear" aria-label="Clear search" hidden>
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M5 5l6 6M11 5l-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+      </button>
+    </div>
   </header>
   <div class="drawer-body" id="drawer-body"></div>
 </aside>
