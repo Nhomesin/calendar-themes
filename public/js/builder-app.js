@@ -1592,7 +1592,6 @@
   // ── Expose globals for inline handlers ───────────────────────────────────
 
   window._builder = {
-    addFormField,
     removeFormField,
     moveFormField,
     copyUrl,
