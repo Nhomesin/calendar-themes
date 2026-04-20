@@ -221,10 +221,66 @@
 /* ── Timezone ────────────────────────────────────────────────────────────── */
 
 .preview-frame .ct-timezone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid var(--ct-border);
   font-size: var(--ct-small-size);
   color: var(--ct-text-muted);
-  padding-top: 12px;
-  text-align: center;
+}
+
+.preview-frame .ct-timezone-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.preview-frame .ct-timezone-icon {
+  width: 13px;
+  height: 13px;
+  opacity: .85;
+}
+
+.preview-frame .ct-timezone-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.preview-frame .ct-timezone-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 1px solid var(--ct-border);
+  border-radius: calc(var(--ct-radius, 8px) * .7);
+  color: var(--ct-text);
+  font-family: inherit;
+  font-size: var(--ct-small-size);
+  font-weight: 600;
+  padding: 6px 26px 6px 10px;
+  cursor: pointer;
+  max-width: 200px;
+}
+
+.preview-frame .ct-timezone-select:hover {
+  background: var(--ct-hover-bg);
+  border-color: var(--ct-primary);
+}
+
+.preview-frame .ct-timezone-chev {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%);
+  color: var(--ct-text-muted);
+  pointer-events: none;
 }
 
 /* ── Time Slots ──────────────────────────────────────────────────────────── */

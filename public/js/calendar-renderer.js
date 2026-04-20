@@ -29,10 +29,43 @@ class CalendarRenderer {
     this.steps = (config.layout && config.layout.stepsOrder) || ['calendar', 'time', 'form', 'confirm'];
     this.isLoading = false;
     this.initialLoaded = false;  // first slot fetch hasn't resolved yet
-    this.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+    this.detectedTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+    this.timezone = this.loadSavedTimezone() || this.detectedTimezone;
+    this.tzIsAuto = this.timezone === this.detectedTimezone && !this.hasSavedTimezone();
 
     // DOM refs
     this.els = {};
+  }
+
+  loadSavedTimezone() {
+    try { return localStorage.getItem('ct-user-timezone') || null; } catch { return null; }
+  }
+
+  hasSavedTimezone() {
+    try { return !!localStorage.getItem('ct-user-timezone'); } catch { return false; }
+  }
+
+  setTimezone(tz, { auto = false } = {}) {
+    if (!tz || tz === this.timezone && auto === this.tzIsAuto) return;
+    this.timezone = tz;
+    this.tzIsAuto = auto;
+    try {
+      if (auto) localStorage.removeItem('ct-user-timezone');
+      else localStorage.setItem('ct-user-timezone', tz);
+    } catch {}
+
+    this.slotCache.clear();
+    this.availableSlots = {};
+
+    if (this.previewMode) {
+      this.render();
+      this.loadMockSlots();
+    } else {
+      this.isLoading = true;
+      this.initialLoaded = false;
+      this.render();
+      this.fetchSlotsForMonth(this.currentYear, this.currentMonth);
+    }
   }
 
   // ── Public API ──────────────────────────────────────────────────────────
@@ -193,11 +226,9 @@ class CalendarRenderer {
       app.appendChild(powered);
     }
 
-    // Timezone
+    // Timezone selector
     if (comp.showTimezone !== false) {
-      const tz = el('div', 'ct-timezone');
-      tz.textContent = this.timezone.replace(/_/g, ' ');
-      app.appendChild(tz);
+      app.appendChild(this.buildTimezoneSelector());
     }
 
     // Atomic swap — prevents the blank-flash between renders
@@ -630,7 +661,7 @@ class CalendarRenderer {
 
     try {
       const data = this.onFetchSlots
-        ? await this.onFetchSlots(startDate, endDate)
+        ? await this.onFetchSlots(startDate, endDate, this.timezone)
         : {};
 
       // Server returns { slots: { 'YYYY-MM-DD': ['iso1','iso2',...] } }
@@ -713,10 +744,136 @@ class CalendarRenderer {
     try {
       const d = new Date(isoOrTime);
       if (isNaN(d.getTime())) return isoOrTime;
-      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: this.timezone });
     } catch {
       return isoOrTime;
     }
+  }
+
+  // ── Timezone UI ──────────────────────────────────────────────────────────
+
+  buildTimezoneSelector() {
+    const wrap = el('div', 'ct-timezone');
+
+    const labelWrap = el('div', 'ct-timezone-meta');
+    const labelIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    labelIcon.setAttribute('viewBox', '0 0 16 16');
+    labelIcon.setAttribute('fill', 'none');
+    labelIcon.setAttribute('class', 'ct-timezone-icon');
+    labelIcon.innerHTML = '<circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><path d="M2 8h12M8 2a9 9 0 010 12M8 2a9 9 0 000 12" stroke="currentColor" stroke-width="1.1" stroke-linecap="round"/>';
+    labelWrap.appendChild(labelIcon);
+
+    const labelText = el('span', 'ct-timezone-label');
+    labelText.textContent = 'Times shown in';
+    labelWrap.appendChild(labelText);
+
+    const selectWrap = el('div', 'ct-timezone-select-wrap');
+    const select = el('select', 'ct-timezone-select');
+    select.setAttribute('aria-label', 'Select timezone');
+
+    const zones = this.timezoneOptionList();
+    const detected = this.detectedTimezone;
+    const current = this.timezone;
+    const exists = zones.some(z => z.tz === current);
+
+    // Auto option
+    const autoOpt = document.createElement('option');
+    autoOpt.value = '__auto__';
+    autoOpt.textContent = `Auto — ${this.timezoneCityLabel(detected)}`;
+    if (this.tzIsAuto) autoOpt.selected = true;
+    select.appendChild(autoOpt);
+
+    // Group by region
+    const groups = {};
+    zones.forEach(z => {
+      const region = z.tz.split('/')[0];
+      if (!groups[region]) groups[region] = [];
+      groups[region].push(z);
+    });
+
+    Object.keys(groups).sort().forEach(region => {
+      const og = document.createElement('optgroup');
+      og.label = region.replace(/_/g, ' ');
+      groups[region].forEach(z => {
+        const opt = document.createElement('option');
+        opt.value = z.tz;
+        opt.textContent = z.label;
+        if (!this.tzIsAuto && z.tz === current) opt.selected = true;
+        og.appendChild(opt);
+      });
+      select.appendChild(og);
+    });
+
+    // If the current tz isn't in the curated list, add it so it shows selected
+    if (!exists && !this.tzIsAuto) {
+      const og = document.createElement('optgroup');
+      og.label = 'Current';
+      const opt = document.createElement('option');
+      opt.value = current;
+      opt.textContent = this.timezoneCityLabel(current);
+      opt.selected = true;
+      og.appendChild(opt);
+      select.appendChild(og);
+    }
+
+    select.addEventListener('change', (e) => {
+      const val = e.target.value;
+      if (val === '__auto__') {
+        this.setTimezone(this.detectedTimezone, { auto: true });
+      } else {
+        this.setTimezone(val, { auto: false });
+      }
+    });
+
+    const chev = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    chev.setAttribute('viewBox', '0 0 12 12');
+    chev.setAttribute('fill', 'none');
+    chev.setAttribute('class', 'ct-timezone-chev');
+    chev.innerHTML = '<path d="M3 5l3 3 3-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>';
+
+    selectWrap.appendChild(select);
+    selectWrap.appendChild(chev);
+
+    wrap.appendChild(labelWrap);
+    wrap.appendChild(selectWrap);
+    return wrap;
+  }
+
+  timezoneCityLabel(tz) {
+    if (!tz) return '';
+    const city = tz.split('/').pop().replace(/_/g, ' ');
+    const offset = this.timezoneOffsetLabel(tz);
+    return offset ? `${city} (${offset})` : city;
+  }
+
+  timezoneOffsetLabel(tz) {
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' }).formatToParts(new Date());
+      const p = parts.find(x => x.type === 'timeZoneName');
+      if (!p) return '';
+      return p.value.replace('GMT', 'UTC');
+    } catch { return ''; }
+  }
+
+  timezoneOptionList() {
+    const zones = [
+      'Pacific/Honolulu','America/Anchorage','America/Los_Angeles','America/Vancouver',
+      'America/Phoenix','America/Denver','America/Edmonton','America/Chicago','America/Mexico_City',
+      'America/New_York','America/Toronto','America/Halifax','America/St_Johns',
+      'America/Sao_Paulo','America/Argentina/Buenos_Aires','America/Santiago','America/Bogota','America/Lima',
+      'Atlantic/Azores','Atlantic/Reykjavik',
+      'Europe/London','Europe/Dublin','Europe/Lisbon',
+      'Europe/Paris','Europe/Berlin','Europe/Madrid','Europe/Rome','Europe/Amsterdam','Europe/Brussels',
+      'Europe/Stockholm','Europe/Copenhagen','Europe/Warsaw','Europe/Prague','Europe/Zurich','Europe/Vienna',
+      'Europe/Athens','Europe/Helsinki','Europe/Bucharest','Europe/Istanbul','Europe/Moscow',
+      'Africa/Casablanca','Africa/Lagos','Africa/Cairo','Africa/Nairobi','Africa/Johannesburg',
+      'Asia/Jerusalem','Asia/Riyadh','Asia/Dubai','Asia/Tehran','Asia/Karachi','Asia/Kolkata','Asia/Kathmandu',
+      'Asia/Dhaka','Asia/Bangkok','Asia/Jakarta','Asia/Singapore','Asia/Manila','Asia/Hong_Kong',
+      'Asia/Shanghai','Asia/Taipei','Asia/Seoul','Asia/Tokyo',
+      'Australia/Perth','Australia/Adelaide','Australia/Brisbane','Australia/Sydney','Australia/Melbourne',
+      'Pacific/Auckland','Pacific/Fiji',
+    ];
+    return zones.map(tz => ({ tz, label: this.timezoneCityLabel(tz) }));
   }
 }
 

@@ -21,6 +21,8 @@
   let activeEditorTab = 'colors';
   let searchQuery = '';
   let previewDevice = 'desktop';
+  let editingFieldIndex = -1;
+  let addingFormField = false;
 
   // ── DOM refs ─────────────────────────────────────────────────────────────
   const $ = s => document.querySelector(s);
@@ -655,48 +657,62 @@
 
   function renderColorsPanel(body) {
     const c = currentConfig.colors || {};
-    const colorFields = [
-      ['primary', 'Primary', c.primary],
-      ['background', 'Background', c.background],
-      ['text', 'Text', c.text],
-      ['textMuted', 'Muted text', c.textMuted],
-      ['buttonBg', 'Button', c.buttonBg],
-      ['buttonText', 'Button text', c.buttonText],
-      ['accent', 'Accent', c.accent],
-      ['border', 'Border', c.border],
-      ['hoverBg', 'Hover', c.hoverBg],
-      ['selectedBg', 'Selected', c.selectedBg],
-      ['selectedText', 'Selected text', c.selectedText],
-      ['todayRing', 'Today ring', c.todayRing],
-      ['error', 'Error', c.error],
-      ['success', 'Success', c.success],
+    const colorGroups = [
+      ['Brand', [
+        ['primary', 'Primary', c.primary],
+        ['accent', 'Accent', c.accent],
+      ]],
+      ['Surface', [
+        ['background', 'Background', c.background],
+        ['hoverBg', 'Hover', c.hoverBg],
+        ['border', 'Border', c.border],
+      ]],
+      ['Text', [
+        ['text', 'Text', c.text],
+        ['textMuted', 'Muted', c.textMuted],
+      ]],
+      ['Action', [
+        ['buttonBg', 'Button', c.buttonBg],
+        ['buttonText', 'Button text', c.buttonText],
+        ['selectedBg', 'Selected', c.selectedBg],
+        ['selectedText', 'Selected text', c.selectedText],
+        ['todayRing', 'Today ring', c.todayRing],
+      ]],
+      ['Status', [
+        ['error', 'Error', c.error],
+        ['success', 'Success', c.success],
+      ]],
     ];
 
-    const section = document.createElement('div');
-    section.className = 'section';
-    section.innerHTML = '<div class="section-label">Color system</div>';
+    body.insertAdjacentHTML('beforeend', sectionHeader('Color system', 'Tokens that drive every themed surface'));
 
-    const grid = document.createElement('div');
-    grid.className = 'color-grid';
+    colorGroups.forEach(([groupName, fields]) => {
+      const section = document.createElement('div');
+      section.className = 'section color-section';
+      section.innerHTML = `<div class="color-section-head">${groupName}</div>`;
 
-    colorFields.forEach(([key, label, value]) => {
-      const val = value || '#000000';
-      const field = document.createElement('div');
-      field.className = 'color-field';
-      field.innerHTML = `
-        <span class="color-label">${label}</span>
-        <div class="color-row">
-          <div class="color-swatch" style="background:${val}">
-            <input type="color" value="${val}" data-color-key="${key}">
+      const grid = document.createElement('div');
+      grid.className = 'color-grid';
+
+      fields.forEach(([key, label, value]) => {
+        const val = value || '#000000';
+        const field = document.createElement('div');
+        field.className = 'color-field';
+        field.innerHTML = `
+          <span class="color-label">${label}</span>
+          <div class="color-row">
+            <div class="color-swatch" style="background:${val}">
+              <input type="color" value="${val}" data-color-key="${key}">
+            </div>
+            <input class="color-hex" value="${val}" maxlength="9" data-hex-key="${key}">
           </div>
-          <input class="color-hex" value="${val}" maxlength="9" data-hex-key="${key}">
-        </div>
-      `;
-      grid.appendChild(field);
-    });
+        `;
+        grid.appendChild(field);
+      });
 
-    section.appendChild(grid);
-    body.appendChild(section);
+      section.appendChild(grid);
+      body.appendChild(section);
+    });
 
     body.querySelectorAll('[data-color-key]').forEach(input => {
       input.addEventListener('input', e => updateColor(e.target.dataset.colorKey, e.target.value));
@@ -723,44 +739,64 @@
 
   function renderTypographyPanel(body) {
     const t = currentConfig.typography || {};
+    const fontOptions = [
+      { value: "'Plus Jakarta Sans', sans-serif", label: 'Plus Jakarta Sans', key: 'Jakarta' },
+      { value: "'DM Sans', sans-serif",           label: 'DM Sans',           key: 'DM Sans' },
+      { value: "'Inter', sans-serif",             label: 'Inter',             key: 'Inter' },
+      { value: "'Poppins', sans-serif",           label: 'Poppins',           key: 'Poppins' },
+      { value: "'Instrument Serif', serif",       label: 'Instrument Serif',  key: 'Instrument' },
+      { value: "'Georgia', serif",                label: 'Georgia',           key: 'Georgia' },
+      { value: 'system-ui, sans-serif',           label: 'System UI',         key: 'system-ui' },
+    ];
+    const currentFont = fontOptions.find(f => t.fontFamily?.includes(f.key)) || fontOptions[0];
+    const headingSize = parseInt(t.headingSize) || 18;
+    const bodySize = parseInt(t.bodySize) || 14;
+    const headingWeight = t.headingWeight || '600';
+    const bodyWeight = t.fontWeight || '500';
+
     body.innerHTML = `
+      ${sectionHeader('Font family', 'Picks a Google Font that applies across the widget')}
       <div class="section">
-        <div class="section-label">Typography</div>
         <div class="field">
-          <label>Font family</label>
           <div class="select-wrap">
             <select id="ed-fontFamily">
-              <option value="'Plus Jakarta Sans', sans-serif" ${t.fontFamily?.includes('Jakarta') ? 'selected' : ''}>Plus Jakarta Sans</option>
-              <option value="'DM Sans', sans-serif" ${t.fontFamily?.includes('DM Sans') ? 'selected' : ''}>DM Sans</option>
-              <option value="'Inter', sans-serif" ${t.fontFamily?.includes('Inter') ? 'selected' : ''}>Inter</option>
-              <option value="'Poppins', sans-serif" ${t.fontFamily?.includes('Poppins') ? 'selected' : ''}>Poppins</option>
-              <option value="'Instrument Serif', serif" ${t.fontFamily?.includes('Instrument') ? 'selected' : ''}>Instrument Serif</option>
-              <option value="'Georgia', serif" ${t.fontFamily?.includes('Georgia') ? 'selected' : ''}>Georgia</option>
-              <option value="system-ui, sans-serif" ${t.fontFamily?.includes('system-ui') ? 'selected' : ''}>System</option>
+              ${fontOptions.map(f => `<option value="${f.value}" ${f.key === currentFont.key ? 'selected' : ''}>${f.label}</option>`).join('')}
             </select>
           </div>
         </div>
+        <div class="font-preview" id="font-preview" style="font-family:${currentFont.value}">
+          <div class="font-preview-heading" style="font-weight:${headingWeight};font-size:${Math.max(20, headingSize)}px">Book an appointment</div>
+          <div class="font-preview-body" style="font-weight:${bodyWeight};font-size:${bodySize}px">The quick brown fox jumps over the lazy dog.</div>
+        </div>
+      </div>
+
+      ${sectionHeader('Scale', 'Type sizing for heading and body copy')}
+      <div class="section">
         <div class="field">
           <label>Heading size</label>
           <div class="slider-row">
-            <input type="range" id="ed-headingSize" min="14" max="32" value="${parseInt(t.headingSize) || 18}">
-            <span class="slider-val">${parseInt(t.headingSize) || 18}px</span>
+            <input type="range" id="ed-headingSize" min="14" max="32" value="${headingSize}">
+            <span class="slider-val">${headingSize}px</span>
           </div>
         </div>
         <div class="field">
           <label>Body size</label>
           <div class="slider-row">
-            <input type="range" id="ed-bodySize" min="11" max="18" value="${parseInt(t.bodySize) || 14}">
-            <span class="slider-val">${parseInt(t.bodySize) || 14}px</span>
+            <input type="range" id="ed-bodySize" min="11" max="18" value="${bodySize}">
+            <span class="slider-val">${bodySize}px</span>
           </div>
         </div>
+      </div>
+
+      ${sectionHeader('Weight', 'Emphasis for headings and body text')}
+      <div class="section">
         <div class="field">
           <label>Body weight</label>
           <div class="select-wrap">
             <select id="ed-fontWeight">
-              <option value="400" ${t.fontWeight === '400' ? 'selected' : ''}>Regular (400)</option>
-              <option value="500" ${t.fontWeight === '500' || !t.fontWeight ? 'selected' : ''}>Medium (500)</option>
-              <option value="600" ${t.fontWeight === '600' ? 'selected' : ''}>Semibold (600)</option>
+              <option value="400" ${bodyWeight === '400' ? 'selected' : ''}>Regular (400)</option>
+              <option value="500" ${bodyWeight === '500' ? 'selected' : ''}>Medium (500)</option>
+              <option value="600" ${bodyWeight === '600' ? 'selected' : ''}>Semibold (600)</option>
             </select>
           </div>
         </div>
@@ -768,22 +804,38 @@
           <label>Heading weight</label>
           <div class="select-wrap">
             <select id="ed-headingWeight">
-              <option value="500" ${t.headingWeight === '500' ? 'selected' : ''}>Medium (500)</option>
-              <option value="600" ${t.headingWeight === '600' || !t.headingWeight ? 'selected' : ''}>Semibold (600)</option>
-              <option value="700" ${t.headingWeight === '700' ? 'selected' : ''}>Bold (700)</option>
+              <option value="500" ${headingWeight === '500' ? 'selected' : ''}>Medium (500)</option>
+              <option value="600" ${headingWeight === '600' ? 'selected' : ''}>Semibold (600)</option>
+              <option value="700" ${headingWeight === '700' ? 'selected' : ''}>Bold (700)</option>
             </select>
           </div>
         </div>
       </div>
     `;
 
+    const preview = body.querySelector('#font-preview');
+    const previewH = preview.querySelector('.font-preview-heading');
+    const previewB = preview.querySelector('.font-preview-body');
+
     const onChange = () => {
       if (!currentConfig.typography) currentConfig.typography = {};
-      currentConfig.typography.fontFamily = body.querySelector('#ed-fontFamily').value;
-      currentConfig.typography.headingSize = body.querySelector('#ed-headingSize').value + 'px';
-      currentConfig.typography.bodySize = body.querySelector('#ed-bodySize').value + 'px';
-      currentConfig.typography.fontWeight = body.querySelector('#ed-fontWeight').value;
-      currentConfig.typography.headingWeight = body.querySelector('#ed-headingWeight').value;
+      const ff = body.querySelector('#ed-fontFamily').value;
+      const hs = body.querySelector('#ed-headingSize').value;
+      const bs = body.querySelector('#ed-bodySize').value;
+      const bw = body.querySelector('#ed-fontWeight').value;
+      const hw = body.querySelector('#ed-headingWeight').value;
+
+      currentConfig.typography.fontFamily = ff;
+      currentConfig.typography.headingSize = hs + 'px';
+      currentConfig.typography.bodySize = bs + 'px';
+      currentConfig.typography.fontWeight = bw;
+      currentConfig.typography.headingWeight = hw;
+
+      preview.style.fontFamily = ff;
+      previewH.style.fontWeight = hw;
+      previewH.style.fontSize = Math.max(20, parseInt(hs)) + 'px';
+      previewB.style.fontWeight = bw;
+      previewB.style.fontSize = bs + 'px';
       updatePreview();
     };
 
@@ -803,54 +855,65 @@
     const stepsOrder = l.stepsOrder || ['calendar', 'time', 'form', 'confirm'];
 
     const flowPresets = [
-      { id: 'date-time-form',   label: 'Date → Time → Form',     steps: ['calendar', 'time', 'form', 'confirm'] },
-      { id: 'time-date-form',   label: 'Time → Date → Form',     steps: ['time', 'calendar', 'form', 'confirm'] },
-      { id: 'date-time-inline', label: 'Date + Time → Form',     steps: ['calendar+time', 'form', 'confirm'] },
+      { id: 'date-time-form',   label: 'Date → Time → Form',     sub: 'Classic linear booking',     steps: ['calendar', 'time', 'form', 'confirm'] },
+      { id: 'time-date-form',   label: 'Time → Date → Form',     sub: 'Lead with availability',     steps: ['time', 'calendar', 'form', 'confirm'] },
+      { id: 'date-time-inline', label: 'Date + Time → Form',     sub: 'Combined scheduler view',    steps: ['calendar+time', 'form', 'confirm'] },
     ];
 
     const currentFlowId = getFlowPresetId(stepsOrder, flowPresets);
 
-    let flowHtml = '';
-    flowPresets.forEach(fp => {
-      flowHtml += `
-        <div class="option-card ${fp.id === currentFlowId ? 'active' : ''}" data-flow="${fp.id}">
-          <div>${fp.label}</div>
-        </div>
-      `;
-    });
+    const layoutOptions = [
+      { id: 'multi-step',  label: 'Multi-step',  desc: 'One step at a time', icon: layoutIcon('multi') },
+      { id: 'single-page', label: 'Single page', desc: 'All in one view',    icon: layoutIcon('single') },
+      { id: 'sidebar',     label: 'Sidebar',     desc: 'Split two-column',   icon: layoutIcon('sidebar') },
+    ];
 
-    let stepListHtml = '';
-    stepsOrder.forEach((step, i) => {
-      stepListHtml += `
-        <div class="step-order-item" data-step="${step}">
-          <span class="step-order-handle">≡</span>
-          <span class="step-order-label">${stepLabel(step)}</span>
-          <div class="step-order-arrows">
-            <button class="icon-btn" data-move-step="${i}" data-dir="-1" aria-label="Move up">↑</button>
-            <button class="icon-btn" data-move-step="${i}" data-dir="1" aria-label="Move down">↓</button>
-          </div>
+    const layoutHtml = layoutOptions.map(opt => `
+      <button class="option-card visual ${(l.type || 'multi-step') === opt.id ? 'active' : ''}" data-layout="${opt.id}" type="button">
+        <div class="option-visual">${opt.icon}</div>
+        <div class="option-text">
+          <div class="option-card-label">${opt.label}</div>
+          <div class="option-card-sub">${opt.desc}</div>
         </div>
-      `;
-    });
+      </button>
+    `).join('');
+
+    const flowHtml = flowPresets.map(fp => `
+      <button class="option-card flow-card ${fp.id === currentFlowId ? 'active' : ''}" data-flow="${fp.id}" type="button">
+        <div class="option-text">
+          <div class="option-card-label">${fp.label}</div>
+          <div class="option-card-sub">${fp.sub}</div>
+        </div>
+        <span class="option-check" aria-hidden="true">${checkIconSvg()}</span>
+      </button>
+    `).join('');
+
+    const stepListHtml = stepsOrder.map((step, i) => `
+      <div class="step-order-item" data-step="${step}">
+        <span class="step-order-handle">${gripIconSvg()}</span>
+        <span class="step-order-index">${i + 1}</span>
+        <span class="step-order-label">${stepLabel(step)}</span>
+        <div class="step-order-arrows">
+          <button class="icon-btn" data-move-step="${i}" data-dir="-1" aria-label="Move up" title="Move up">${arrowUpSvg()}</button>
+          <button class="icon-btn" data-move-step="${i}" data-dir="1" aria-label="Move down" title="Move down">${arrowDownSvg()}</button>
+        </div>
+      </div>
+    `).join('');
 
     body.innerHTML = `
+      ${sectionHeader('Layout mode', 'Pick how the booking flow presents itself')}
       <div class="section">
-        <div class="section-label">Layout mode</div>
-        <div class="option-cards">
-          <div class="option-card ${l.type === 'multi-step' || !l.type ? 'active' : ''}" data-layout="multi-step">Multi-step</div>
-          <div class="option-card ${l.type === 'single-page' ? 'active' : ''}" data-layout="single-page">Single page</div>
-          <div class="option-card ${l.type === 'sidebar' ? 'active' : ''}" data-layout="sidebar">Sidebar</div>
-        </div>
+        <div class="option-cards option-cards-visual">${layoutHtml}</div>
       </div>
 
+      ${sectionHeader('Booking flow', 'Reorder steps or pick a flow preset')}
       <div class="section">
-        <div class="section-label">Booking flow</div>
         <div class="option-cards flow-cards">${flowHtml}</div>
-        <div class="step-order-list" style="margin-top:10px">${stepListHtml}</div>
+        <div class="step-order-list">${stepListHtml}</div>
       </div>
 
+      ${sectionHeader('Spacing', 'Rhythm & rounding for the whole widget')}
       <div class="section">
-        <div class="section-label">Spacing</div>
         <div class="field">
           <label>Corner radius</label>
           <div class="slider-row">
@@ -874,8 +937,8 @@
         </div>
       </div>
 
+      ${sectionHeader('Calendar', 'Regional basics')}
       <div class="section">
-        <div class="section-label">Calendar</div>
         <div class="field">
           <label>First day of week</label>
           <div class="select-wrap">
@@ -963,17 +1026,30 @@
 
   function renderTimeSlotsPanel(body) {
     const ts = currentConfig.timeSlots || {};
-    body.innerHTML = `
-      <div class="section">
-        <div class="section-label">Slot style</div>
-        <div class="option-cards">
-          <div class="option-card ${ts.style === 'pills' || !ts.style ? 'active' : ''}" data-slot-style="pills">Pills</div>
-          <div class="option-card ${ts.style === 'list' ? 'active' : ''}" data-slot-style="list">List</div>
-          <div class="option-card ${ts.style === 'grid' ? 'active' : ''}" data-slot-style="grid">Grid</div>
+    const styleOptions = [
+      { id: 'pills', label: 'Pills', desc: 'Compact rounded buttons', icon: slotIcon('pills') },
+      { id: 'list',  label: 'List',  desc: 'Full-width stacked rows', icon: slotIcon('list') },
+      { id: 'grid',  label: 'Grid',  desc: 'Square card layout',       icon: slotIcon('grid') },
+    ];
+    const current = ts.style || 'pills';
+
+    const optionsHtml = styleOptions.map(opt => `
+      <button class="option-card visual ${opt.id === current ? 'active' : ''}" data-slot-style="${opt.id}" type="button">
+        <div class="option-visual">${opt.icon}</div>
+        <div class="option-text">
+          <div class="option-card-label">${opt.label}</div>
+          <div class="option-card-sub">${opt.desc}</div>
         </div>
-      </div>
+      </button>
+    `).join('');
+
+    body.innerHTML = `
+      ${sectionHeader('Slot style', 'Shape and spacing for time-slot buttons')}
       <div class="section">
-        <div class="section-label">Columns</div>
+        <div class="option-cards option-cards-visual">${optionsHtml}</div>
+      </div>
+      ${sectionHeader('Columns', 'How many slots per row')}
+      <div class="section">
         <div class="slider-row">
           <input type="range" id="ed-slotCols" min="2" max="4" value="${ts.columns || 3}">
           <span class="slider-val">${ts.columns || 3}</span>
@@ -1003,45 +1079,135 @@
 
   function renderFormPanel(body) {
     const fields = (currentConfig.form && currentConfig.form.fields) || [];
-    let html = '<div class="section"><div class="section-label">Booking form fields</div><div class="form-fields-list">';
 
-    fields.forEach((f, i) => {
-      html += `
-        <div class="form-field-item">
+    const itemsHtml = fields.map((f, i) => {
+      const isEditing = editingFieldIndex === i;
+      if (isEditing) return renderFormFieldEditor(f, i);
+      return `
+        <div class="form-field-item" data-idx="${i}">
+          <span class="form-field-grip">${gripIconSvg()}</span>
           <div class="field-info">
-            <div class="field-name">${escHtml(f.label || f.name)}${f.required ? ' <span style="color:var(--danger)">*</span>' : ''}</div>
-            <div class="field-type">${f.type || 'text'}</div>
+            <div class="field-name">${escHtml(f.label || f.name)}${f.required ? ' <span class="field-req" title="Required">*</span>' : ''}</div>
+            <div class="field-type">${f.type || 'text'} · ${escHtml(f.name)}</div>
           </div>
           <div class="field-actions">
-            <button class="icon-btn" onclick="window._builder.moveFormField(${i}, -1)" aria-label="Up">↑</button>
-            <button class="icon-btn" onclick="window._builder.moveFormField(${i}, 1)" aria-label="Down">↓</button>
-            <button class="icon-btn danger" onclick="window._builder.removeFormField(${i})" aria-label="Remove">×</button>
+            <button class="icon-btn" data-form-move="${i}" data-dir="-1" aria-label="Move up" title="Move up">${arrowUpSvg()}</button>
+            <button class="icon-btn" data-form-move="${i}" data-dir="1" aria-label="Move down" title="Move down">${arrowDownSvg()}</button>
+            <button class="icon-btn" data-form-edit="${i}" aria-label="Edit" title="Edit">${pencilIconSvg()}</button>
+            <button class="icon-btn danger" data-form-remove="${i}" aria-label="Remove" title="Remove">${trashIconSvg()}</button>
           </div>
         </div>
       `;
+    }).join('');
+
+    const addingHtml = addingFormField ? renderFormFieldEditor({ name: '', label: '', type: 'text', required: false, placeholder: '' }, -1) : '';
+
+    body.innerHTML = `
+      ${sectionHeader('Booking form', 'Fields collected on the final step')}
+      <div class="section">
+        <div class="form-fields-list">${itemsHtml || '<div class="form-empty">No fields yet. Add one below.</div>'}</div>
+        ${addingHtml}
+        ${!addingFormField ? '<button class="add-field-btn" data-form-add type="button">+ Add field</button>' : ''}
+      </div>
+    `;
+
+    body.querySelectorAll('[data-form-add]').forEach(b => b.onclick = () => { addingFormField = true; renderEditor(); });
+    body.querySelectorAll('[data-form-edit]').forEach(b => b.onclick = e => { editingFieldIndex = parseInt(e.currentTarget.dataset.formEdit); addingFormField = false; renderEditor(); });
+    body.querySelectorAll('[data-form-remove]').forEach(b => b.onclick = e => removeFormField(parseInt(e.currentTarget.dataset.formRemove)));
+    body.querySelectorAll('[data-form-move]').forEach(b => b.onclick = e => {
+      const el = e.currentTarget;
+      moveFormField(parseInt(el.dataset.formMove), parseInt(el.dataset.dir));
     });
 
-    html += '</div>';
-    html += '<button class="add-field-btn" style="margin-top:8px" onclick="window._builder.addFormField()">+ Add field</button>';
-    html += '</div>';
-
-    body.innerHTML = html;
+    wireFormFieldEditor(body);
   }
 
-  function addFormField() {
-    const name = prompt('Field name (e.g. "company")');
-    if (!name) return;
-    const label = prompt('Label', name.charAt(0).toUpperCase() + name.slice(1));
-    const type = prompt('Type (text, email, tel, textarea, select)', 'text') || 'text';
-    if (!currentConfig.form) currentConfig.form = { fields: [] };
-    currentConfig.form.fields.push({ name, label: label || name, type, required: false, placeholder: '' });
-    renderEditor();
-    updatePreview();
+  function renderFormFieldEditor(f, idx) {
+    const types = ['text', 'email', 'tel', 'textarea', 'number', 'select'];
+    const isNew = idx === -1;
+    return `
+      <div class="form-field-editor" data-editor-idx="${idx}">
+        <div class="form-field-editor-head">
+          <div class="form-field-editor-title">${isNew ? 'New field' : 'Edit field'}</div>
+        </div>
+        <div class="field">
+          <label>Label</label>
+          <input type="text" data-field-prop="label" value="${escHtml(f.label || '')}" placeholder="e.g. Company">
+        </div>
+        <div class="field-grid">
+          <div class="field">
+            <label>Key</label>
+            <input type="text" data-field-prop="name" value="${escHtml(f.name || '')}" placeholder="company">
+          </div>
+          <div class="field">
+            <label>Type</label>
+            <div class="select-wrap">
+              <select data-field-prop="type">
+                ${types.map(t => `<option value="${t}" ${f.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Placeholder</label>
+          <input type="text" data-field-prop="placeholder" value="${escHtml(f.placeholder || '')}">
+        </div>
+        <div class="toggle-row compact">
+          <span class="toggle-label">Required</span>
+          <div class="toggle ${f.required ? 'on' : ''}" data-field-prop="required"></div>
+        </div>
+        <div class="form-field-editor-actions">
+          <button class="btn btn-ghost" data-field-cancel type="button">Cancel</button>
+          <button class="btn btn-primary" data-field-save type="button">${isNew ? 'Add field' : 'Save'}</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function wireFormFieldEditor(body) {
+    const editor = body.querySelector('.form-field-editor');
+    if (!editor) return;
+    const idx = parseInt(editor.dataset.editorIdx);
+    const isNew = idx === -1;
+
+    const toggleEl = editor.querySelector('.toggle[data-field-prop="required"]');
+    if (toggleEl) toggleEl.onclick = () => toggleEl.classList.toggle('on');
+
+    editor.querySelector('[data-field-cancel]').onclick = () => {
+      addingFormField = false;
+      editingFieldIndex = -1;
+      renderEditor();
+    };
+
+    editor.querySelector('[data-field-save]').onclick = () => {
+      const label = editor.querySelector('[data-field-prop="label"]').value.trim();
+      let name = editor.querySelector('[data-field-prop="name"]').value.trim();
+      const type = editor.querySelector('[data-field-prop="type"]').value;
+      const placeholder = editor.querySelector('[data-field-prop="placeholder"]').value;
+      const required = editor.querySelector('[data-field-prop="required"]').classList.contains('on');
+
+      if (!label && !name) { showToast('Label or key required', 'err'); return; }
+      if (!name) name = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      if (!name) { showToast('Invalid field key', 'err'); return; }
+
+      if (!currentConfig.form) currentConfig.form = { fields: [] };
+      if (!Array.isArray(currentConfig.form.fields)) currentConfig.form.fields = [];
+
+      const field = { name, label: label || name, type, required, placeholder };
+      if (isNew) currentConfig.form.fields.push(field);
+      else currentConfig.form.fields[idx] = field;
+
+      addingFormField = false;
+      editingFieldIndex = -1;
+      renderEditor();
+      updatePreview();
+    };
   }
 
   function removeFormField(index) {
     if (!currentConfig.form?.fields) return;
     currentConfig.form.fields.splice(index, 1);
+    editingFieldIndex = -1;
     renderEditor();
     updatePreview();
   }
@@ -1060,28 +1226,30 @@
 
   function renderComponentsPanel(body) {
     const comp = currentConfig.components || {};
+    const toggles = [
+      ['showHeader',      'Show header',            'Title bar at the top of the widget',            comp.showHeader !== false],
+      ['showProgressBar', 'Show progress bar',      'Visual step indicator',                          comp.showProgressBar !== false],
+      ['showTimezone',    'Show timezone selector', 'Lets guests confirm or change their timezone',   comp.showTimezone !== false],
+      ['showPoweredBy',   'Show "Powered by"',      'Small attribution line at the bottom',           comp.showPoweredBy !== false],
+    ];
+
     body.innerHTML = `
+      ${sectionHeader('Visibility', 'Toggle chrome and supplementary UI')}
       <div class="section">
-        <div class="section-label">Visibility</div>
-        <div class="toggle-row">
-          <span class="toggle-label">Show header</span>
-          <div class="toggle ${comp.showHeader !== false ? 'on' : ''}" data-toggle="showHeader"></div>
-        </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Show progress bar</span>
-          <div class="toggle ${comp.showProgressBar !== false ? 'on' : ''}" data-toggle="showProgressBar"></div>
-        </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Show timezone</span>
-          <div class="toggle ${comp.showTimezone !== false ? 'on' : ''}" data-toggle="showTimezone"></div>
-        </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Show "Powered by"</span>
-          <div class="toggle ${comp.showPoweredBy !== false ? 'on' : ''}" data-toggle="showPoweredBy"></div>
+        <div class="toggle-stack">
+          ${toggles.map(([k, l, d, on]) => `
+            <div class="toggle-row rich">
+              <div class="toggle-row-text">
+                <div class="toggle-label">${l}</div>
+                <div class="toggle-desc">${d}</div>
+              </div>
+              <div class="toggle ${on ? 'on' : ''}" data-toggle="${k}"></div>
+            </div>
+          `).join('')}
         </div>
       </div>
+      ${sectionHeader('Copy', 'Customer-facing text strings')}
       <div class="section">
-        <div class="section-label">Copy</div>
         <div class="field">
           <label>Header text</label>
           <input type="text" id="ed-headerText" value="${escHtml(comp.headerText || 'Book an Appointment')}">
@@ -1122,9 +1290,16 @@
 
   function renderAnimationsPanel(body) {
     const a = currentConfig.animations || {};
+    const current = a.stepTransition || 'slide-left';
+    const transOptions = [
+      { id: 'slide-left', label: 'Slide', desc: 'Steps slide in horizontally', icon: motionIcon('slide') },
+      { id: 'fade',       label: 'Fade',  desc: 'Smooth opacity fade',         icon: motionIcon('fade') },
+      { id: 'none',       label: 'None',  desc: 'Instant transitions',         icon: motionIcon('none') },
+    ];
+
     body.innerHTML = `
+      ${sectionHeader('Timing', 'How quickly elements respond to interaction')}
       <div class="section">
-        <div class="section-label">Motion</div>
         <div class="field">
           <label>Transition speed</label>
           <div class="slider-row">
@@ -1132,18 +1307,30 @@
             <span class="slider-val">${parseFloat(a.transitionSpeed) || 0.2}s</span>
           </div>
         </div>
-        <div class="field">
-          <label>Step transition</label>
-          <div class="select-wrap">
-            <select id="ed-stepTrans">
-              <option value="slide-left" ${a.stepTransition === 'slide-left' || !a.stepTransition ? 'selected' : ''}>Slide</option>
-              <option value="fade" ${a.stepTransition === 'fade' ? 'selected' : ''}>Fade</option>
-              <option value="none" ${a.stepTransition === 'none' ? 'selected' : ''}>None</option>
-            </select>
-          </div>
+      </div>
+
+      ${sectionHeader('Step transition', 'Animation between booking steps')}
+      <div class="section">
+        <div class="option-cards option-cards-visual">
+          ${transOptions.map(opt => `
+            <button class="option-card visual ${opt.id === current ? 'active' : ''}" data-step-trans="${opt.id}" type="button">
+              <div class="option-visual">${opt.icon}</div>
+              <div class="option-text">
+                <div class="option-card-label">${opt.label}</div>
+                <div class="option-card-sub">${opt.desc}</div>
+              </div>
+            </button>
+          `).join('')}
         </div>
-        <div class="toggle-row">
-          <span class="toggle-label">Hover scale effect</span>
+      </div>
+
+      ${sectionHeader('Interactions', 'Micro-effects')}
+      <div class="section">
+        <div class="toggle-row rich">
+          <div class="toggle-row-text">
+            <div class="toggle-label">Hover scale</div>
+            <div class="toggle-desc">Slightly grow slots and buttons on hover</div>
+          </div>
           <div class="toggle ${a.hoverScale ? 'on' : ''}" data-toggle="hoverScale"></div>
         </div>
       </div>
@@ -1156,10 +1343,13 @@
       updatePreview();
     });
 
-    body.querySelector('#ed-stepTrans').addEventListener('change', (e) => {
-      if (!currentConfig.animations) currentConfig.animations = {};
-      currentConfig.animations.stepTransition = e.target.value;
-      updatePreview();
+    body.querySelectorAll('[data-step-trans]').forEach(card => {
+      card.onclick = () => {
+        if (!currentConfig.animations) currentConfig.animations = {};
+        currentConfig.animations.stepTransition = card.dataset.stepTrans;
+        body.querySelectorAll('[data-step-trans]').forEach(c => c.classList.toggle('active', c === card));
+        updatePreview();
+      };
     });
 
     body.querySelector('[data-toggle="hoverScale"]').onclick = function() {
@@ -1174,17 +1364,126 @@
 
   function renderCustomCssPanel(body) {
     body.innerHTML = `
+      ${sectionHeader('Custom CSS', 'Advanced overrides applied on top of the theme')}
       <div class="section">
-        <div class="section-label">Custom CSS</div>
         <div class="field">
-          <textarea class="code-input" id="ed-customCss" rows="16" placeholder="/* Override any styles here */&#10;.ct-slot { ... }">${escHtml(currentConfig.customCss || '')}</textarea>
+          <textarea class="code-input" id="ed-customCss" rows="16" spellcheck="false" placeholder="/* Override any styles here */&#10;.ct-slot { ... }">${escHtml(currentConfig.customCss || '')}</textarea>
         </div>
+        <div class="panel-hint">Tip: target <code>.ct-slot</code>, <code>.ct-cal-day</code>, <code>.ct-btn</code>, or any theme variables like <code>--ct-primary</code>.</div>
       </div>
     `;
     body.querySelector('#ed-customCss').addEventListener('input', (e) => {
       currentConfig.customCss = e.target.value;
       updatePreview();
     });
+  }
+
+  // ── Reusable UI helpers ──────────────────────────────────────────────────
+
+  function sectionHeader(title, sub) {
+    return `
+      <div class="section-header">
+        <div class="section-title">${escHtml(title)}</div>
+        ${sub ? `<div class="section-sub">${escHtml(sub)}</div>` : ''}
+      </div>
+    `;
+  }
+
+  function checkIconSvg() {
+    return '<svg viewBox="0 0 16 16" fill="none"><path d="M3.5 8.5l3 3 6-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function gripIconSvg() {
+    return '<svg viewBox="0 0 16 16" fill="none"><circle cx="6" cy="4" r="1.1" fill="currentColor"/><circle cx="10" cy="4" r="1.1" fill="currentColor"/><circle cx="6" cy="8" r="1.1" fill="currentColor"/><circle cx="10" cy="8" r="1.1" fill="currentColor"/><circle cx="6" cy="12" r="1.1" fill="currentColor"/><circle cx="10" cy="12" r="1.1" fill="currentColor"/></svg>';
+  }
+  function arrowUpSvg() {
+    return '<svg viewBox="0 0 16 16" fill="none"><path d="M4 10l4-4 4 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function arrowDownSvg() {
+    return '<svg viewBox="0 0 16 16" fill="none"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function pencilIconSvg() {
+    return '<svg viewBox="0 0 16 16" fill="none"><path d="M10.5 2.5l3 3-8 8H2.5v-3l8-8z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 4l3 3" stroke="currentColor" stroke-width="1.4"/></svg>';
+  }
+  function trashIconSvg() {
+    return '<svg viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V2.5A.5.5 0 016.5 2h3a.5.5 0 01.5.5V4M5 4v9a1 1 0 001 1h4a1 1 0 001-1V4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>';
+  }
+
+  function layoutIcon(kind) {
+    if (kind === 'multi') {
+      return `<svg viewBox="0 0 56 36" fill="none">
+        <rect x="1.5" y="1.5" width="53" height="33" rx="4" stroke="currentColor" stroke-width="1.2" opacity=".4"/>
+        <rect x="6" y="7" width="44" height="3" rx="1.5" fill="currentColor" opacity=".4"/>
+        <rect x="6" y="7" width="15" height="3" rx="1.5" fill="currentColor"/>
+        <rect x="6" y="16" width="20" height="14" rx="2" fill="currentColor" opacity=".18"/>
+        <rect x="30" y="16" width="20" height="14" rx="2" fill="currentColor" opacity=".5"/>
+      </svg>`;
+    }
+    if (kind === 'single') {
+      return `<svg viewBox="0 0 56 36" fill="none">
+        <rect x="1.5" y="1.5" width="53" height="33" rx="4" stroke="currentColor" stroke-width="1.2" opacity=".4"/>
+        <rect x="6" y="6" width="44" height="4" rx="1" fill="currentColor"/>
+        <rect x="6" y="12" width="44" height="8" rx="1" fill="currentColor" opacity=".28"/>
+        <rect x="6" y="22" width="30" height="4" rx="1" fill="currentColor" opacity=".5"/>
+        <rect x="40" y="22" width="10" height="4" rx="1" fill="currentColor"/>
+      </svg>`;
+    }
+    // sidebar
+    return `<svg viewBox="0 0 56 36" fill="none">
+      <rect x="1.5" y="1.5" width="53" height="33" rx="4" stroke="currentColor" stroke-width="1.2" opacity=".4"/>
+      <rect x="6" y="6" width="20" height="24" rx="2" fill="currentColor" opacity=".5"/>
+      <rect x="30" y="6" width="20" height="6" rx="1" fill="currentColor" opacity=".3"/>
+      <rect x="30" y="14" width="20" height="6" rx="1" fill="currentColor" opacity=".3"/>
+      <rect x="30" y="22" width="20" height="8" rx="1" fill="currentColor"/>
+    </svg>`;
+  }
+
+  function slotIcon(kind) {
+    if (kind === 'pills') {
+      return `<svg viewBox="0 0 56 36" fill="none">
+        <rect x="4" y="10" width="14" height="6" rx="3" fill="currentColor" opacity=".35"/>
+        <rect x="21" y="10" width="14" height="6" rx="3" fill="currentColor"/>
+        <rect x="38" y="10" width="14" height="6" rx="3" fill="currentColor" opacity=".35"/>
+        <rect x="4" y="22" width="14" height="6" rx="3" fill="currentColor" opacity=".35"/>
+        <rect x="21" y="22" width="14" height="6" rx="3" fill="currentColor" opacity=".35"/>
+        <rect x="38" y="22" width="14" height="6" rx="3" fill="currentColor" opacity=".35"/>
+      </svg>`;
+    }
+    if (kind === 'list') {
+      return `<svg viewBox="0 0 56 36" fill="none">
+        <rect x="4" y="6" width="48" height="6" rx="1.5" fill="currentColor" opacity=".35"/>
+        <rect x="4" y="15" width="48" height="6" rx="1.5" fill="currentColor"/>
+        <rect x="4" y="24" width="48" height="6" rx="1.5" fill="currentColor" opacity=".35"/>
+      </svg>`;
+    }
+    // grid
+    return `<svg viewBox="0 0 56 36" fill="none">
+      <rect x="4" y="6" width="14" height="10" rx="1.5" fill="currentColor" opacity=".35"/>
+      <rect x="21" y="6" width="14" height="10" rx="1.5" fill="currentColor"/>
+      <rect x="38" y="6" width="14" height="10" rx="1.5" fill="currentColor" opacity=".35"/>
+      <rect x="4" y="20" width="14" height="10" rx="1.5" fill="currentColor" opacity=".35"/>
+      <rect x="21" y="20" width="14" height="10" rx="1.5" fill="currentColor" opacity=".35"/>
+      <rect x="38" y="20" width="14" height="10" rx="1.5" fill="currentColor" opacity=".35"/>
+    </svg>`;
+  }
+
+  function motionIcon(kind) {
+    if (kind === 'slide') {
+      return `<svg viewBox="0 0 56 36" fill="none">
+        <rect x="4" y="9" width="18" height="18" rx="2" fill="currentColor" opacity=".3"/>
+        <rect x="28" y="9" width="24" height="18" rx="2" fill="currentColor"/>
+        <path d="M17 18h10M23 15l4 3-4 3" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>`;
+    }
+    if (kind === 'fade') {
+      return `<svg viewBox="0 0 56 36" fill="none">
+        <defs><linearGradient id="fg1" x1="0" x2="1"><stop offset="0" stop-color="currentColor" stop-opacity=".15"/><stop offset="1" stop-color="currentColor" stop-opacity="1"/></linearGradient></defs>
+        <rect x="6" y="9" width="44" height="18" rx="2" fill="url(#fg1)"/>
+      </svg>`;
+    }
+    return `<svg viewBox="0 0 56 36" fill="none">
+      <rect x="6" y="9" width="44" height="18" rx="2" fill="currentColor" opacity=".55"/>
+      <path d="M14 13l28 10M42 13L14 23" stroke="white" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>`;
   }
 
   // ── Preview ──────────────────────────────────────────────────────────────

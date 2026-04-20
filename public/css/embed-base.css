@@ -248,13 +248,87 @@ html, body {
 /* ── Timezone ────────────────────────────────────────────────────────────── */
 
 .ct-timezone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding-top: 14px;
+  margin-top: 14px;
+  border-top: 1px solid var(--ct-border);
   font-size: var(--ct-small-size);
   color: var(--ct-text-muted);
-  padding-top: 12px;
-  text-align: center;
 }
 
 .ct-timezone.hidden { display: none; }
+
+.ct-timezone-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ct-text-muted);
+  font-weight: 500;
+  letter-spacing: -.005em;
+}
+
+.ct-timezone-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--ct-text-muted);
+  opacity: .85;
+}
+
+.ct-timezone-label {
+  font-size: var(--ct-small-size);
+  color: var(--ct-text-muted);
+}
+
+.ct-timezone-select-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ct-timezone-select {
+  appearance: none;
+  -webkit-appearance: none;
+  background: transparent;
+  border: 1px solid var(--ct-border);
+  border-radius: calc(var(--ct-radius, 8px) * .7);
+  color: var(--ct-text);
+  font-family: inherit;
+  font-size: var(--ct-small-size);
+  font-weight: 600;
+  padding: 6px 26px 6px 10px;
+  cursor: pointer;
+  min-width: 0;
+  max-width: 220px;
+  transition: border-color .15s ease, background .15s ease, box-shadow .15s ease;
+  letter-spacing: -.005em;
+}
+
+.ct-timezone-select:hover {
+  border-color: var(--ct-primary);
+  background: var(--ct-hover-bg);
+}
+
+.ct-timezone-select:focus {
+  outline: none;
+  border-color: var(--ct-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ct-primary) 18%, transparent);
+}
+
+.ct-timezone-chev {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translateY(-50%);
+  color: var(--ct-text-muted);
+  pointer-events: none;
+}
 
 /* ── Time Slots ──────────────────────────────────────────────────────────── */
 

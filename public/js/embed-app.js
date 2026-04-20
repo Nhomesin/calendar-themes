@@ -29,8 +29,8 @@
   const baseUrl = window.location.origin;
 
   // Fetch available time slots from the server proxy
-  async function fetchSlots(startDate, endDate) {
-    const tz = encodeURIComponent(Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York');
+  async function fetchSlots(startDate, endDate, timezone) {
+    const tz = encodeURIComponent(timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York');
     const url = `${baseUrl}/api/slots/${locationId}/${calendarId}?startDate=${startDate}&endDate=${endDate}&timezone=${tz}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to load available times');
