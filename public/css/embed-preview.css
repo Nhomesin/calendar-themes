@@ -40,13 +40,30 @@
 /* ── App Shell ───────────────────────────────────────────────────────────── */
 
 .preview-frame #ct-app {
-  max-width: 100%;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 420px;
+  margin: 16px auto;
   padding: var(--ct-padding);
   display: flex;
   flex-direction: column;
   background: var(--ct-bg);
+  border-radius: calc(var(--ct-radius) + 4px);
+  box-shadow: 0 1px 2px var(--ct-shadow), 0 12px 32px var(--ct-shadow);
 }
+
+.preview-frame #ct-app.layout-sidebar,
+.preview-frame #ct-app.layout-single-page,
+.preview-frame #ct-app.flow-combined {
+  max-width: 720px;
+}
+
+.preview-frame #ct-app.is-transparent {
+  background: transparent;
+  box-shadow: none;
+}
+
+/* In the mobile device preview, don't exceed the device frame */
+.preview-frame.device-mobile #ct-app { max-width: 100%; margin: 0 auto; }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
 

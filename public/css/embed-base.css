@@ -34,8 +34,8 @@
 }
 
 html, body {
-  height: 100%;
-  background: var(--ct-bg);
+  min-height: 0;
+  background: transparent;
   font-family: var(--ct-font);
   color: var(--ct-text);
   font-size: var(--ct-body-size);
@@ -45,19 +45,31 @@ html, body {
 
 /* ── App Shell ───────────────────────────────────────────────────────────── */
 
+/* The widget hugs its content: narrow card, centered, with a soft surface.
+   No forced 100vh — the iframe resizes to the widget via postMessage. */
 #ct-app {
-  max-width: 480px;
-  margin: 0 auto;
+  width: 100%;
+  max-width: 420px;
+  margin: 16px auto;
   padding: var(--ct-padding);
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  background: var(--ct-bg);
+  border-radius: calc(var(--ct-radius) + 4px);
+  box-shadow: 0 1px 2px var(--ct-shadow), 0 12px 32px var(--ct-shadow);
 }
 
 #ct-app.layout-sidebar,
 #ct-app.layout-single-page,
 #ct-app.flow-combined {
-  max-width: 760px;
+  max-width: 720px;
+}
+
+/* When the widget background is transparent, drop the card chrome so the
+   host page shows through cleanly. */
+#ct-app.is-transparent {
+  box-shadow: none;
+  background: transparent;
 }
 
 /* ── Header ──────────────────────────────────────────────────────────────── */
@@ -641,6 +653,6 @@ html, body {
 
 /* Mobile — tighten spacing, drop slot columns */
 @media (max-width: 500px) {
-  #ct-app { padding: 12px; }
+  #ct-app { padding: 12px; margin: 8px auto; border-radius: var(--ct-radius); }
   .ct-slots-grid.style-pills { grid-template-columns: repeat(2, 1fr); }
 }

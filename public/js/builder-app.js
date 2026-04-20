@@ -208,9 +208,9 @@
         <div class="theme-card-row">
           <div class="theme-card-name">${escHtml(theme.name || 'Untitled theme')}</div>
           <div class="theme-card-swatches">
-            <div class="theme-card-swatch" style="background:${colors.primary || '#3730A3'}"></div>
-            <div class="theme-card-swatch" style="background:${colors.background || '#FFFFFF'}"></div>
-            <div class="theme-card-swatch" style="background:${colors.buttonBg || colors.primary || '#3730A3'}"></div>
+            <div class="theme-card-swatch"><span style="background:${colors.primary || '#3730A3'}"></span></div>
+            <div class="theme-card-swatch"><span style="background:${colors.background || '#FFFFFF'}"></span></div>
+            <div class="theme-card-swatch"><span style="background:${colors.buttonBg || colors.primary || '#3730A3'}"></span></div>
           </div>
         </div>
         <div class="theme-card-meta">
@@ -682,7 +682,7 @@
       ]],
     ];
 
-    body.insertAdjacentHTML('beforeend', sectionHeader('Color system', 'Tokens that drive every themed surface'));
+    body.insertAdjacentHTML('beforeend', sectionHeader('Color system', 'Tokens that drive every themed surface · opacity supported'));
 
     colorGroups.forEach(([groupName, fields]) => {
       const section = document.createElement('div');
@@ -694,15 +694,18 @@
 
       fields.forEach(([key, label, value]) => {
         const val = value || '#000000';
+        const { hex, alpha } = parseColorValue(val);
         const field = document.createElement('div');
         field.className = 'color-field';
         field.innerHTML = `
           <span class="color-label">${label}</span>
           <div class="color-row">
-            <div class="color-swatch" style="background:${val}">
-              <input type="color" value="${val}" data-color-key="${key}">
+            <div class="color-swatch">
+              <div class="color-swatch-fill" data-swatch-fill="${key}" style="background:${val}"></div>
+              <input type="color" value="${hex}" data-color-key="${key}" aria-label="${label} color picker">
             </div>
-            <input class="color-hex" value="${val}" maxlength="9" data-hex-key="${key}">
+            <input class="color-hex" value="${val}" maxlength="9" spellcheck="false" data-hex-key="${key}" aria-label="${label} hex">
+            <input class="color-alpha" type="range" min="0" max="100" value="${alpha}" step="1" data-alpha-key="${key}" aria-label="${label} opacity" title="Opacity ${alpha}%">
           </div>
         `;
         grid.appendChild(field);
@@ -713,23 +716,69 @@
     });
 
     body.querySelectorAll('[data-color-key]').forEach(input => {
-      input.addEventListener('input', e => updateColor(e.target.dataset.colorKey, e.target.value));
+      input.addEventListener('input', e => {
+        const key = e.target.dataset.colorKey;
+        const alphaEl = body.querySelector(`[data-alpha-key="${key}"]`);
+        const alpha = alphaEl ? parseInt(alphaEl.value, 10) : 100;
+        updateColor(key, formatColorValue(e.target.value, alpha));
+      });
     });
 
     body.querySelectorAll('[data-hex-key]').forEach(input => {
       input.addEventListener('input', e => {
-        if (/^#[0-9A-Fa-f]{6}$/.test(e.target.value)) updateColor(e.target.dataset.hexKey, e.target.value);
+        const v = e.target.value.trim();
+        if (/^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})?$/.test(v)) {
+          updateColor(e.target.dataset.hexKey, v.toUpperCase());
+        }
       });
     });
+
+    body.querySelectorAll('[data-alpha-key]').forEach(input => {
+      input.addEventListener('input', e => {
+        const key = e.target.dataset.alphaKey;
+        const stored = (currentConfig.colors || {})[key] || '#000000';
+        const { hex } = parseColorValue(stored);
+        updateColor(key, formatColorValue(hex, parseInt(e.target.value, 10)));
+      });
+    });
+  }
+
+  function parseColorValue(value) {
+    if (!value) return { hex: '#000000', alpha: 100 };
+    const v = String(value).trim();
+    if (v.toLowerCase() === 'transparent') return { hex: '#000000', alpha: 0 };
+    const m = /^#([0-9A-Fa-f]{6})([0-9A-Fa-f]{2})?$/.exec(v);
+    if (!m) return { hex: '#000000', alpha: 100 };
+    const hex = '#' + m[1].toUpperCase();
+    const alpha = m[2] ? Math.round((parseInt(m[2], 16) / 255) * 100) : 100;
+    return { hex, alpha };
+  }
+
+  function formatColorValue(hex, alpha) {
+    const clean = (hex || '#000000').toUpperCase();
+    const a = Math.max(0, Math.min(100, alpha || 0));
+    if (a >= 100) return clean;
+    const aa = Math.round((a / 100) * 255).toString(16).padStart(2, '0').toUpperCase();
+    return `${clean}${aa}`;
   }
 
   function updateColor(key, value) {
     if (!currentConfig.colors) currentConfig.colors = {};
     currentConfig.colors[key] = value;
-    const swatch = $(`[data-color-key="${key}"]`);
-    const hex = $(`[data-hex-key="${key}"]`);
-    if (swatch) { swatch.value = value; swatch.parentElement.style.background = value; }
-    if (hex) hex.value = value;
+    const { hex, alpha } = parseColorValue(value);
+
+    const picker = $(`[data-color-key="${key}"]`);
+    const hexInput = $(`[data-hex-key="${key}"]`);
+    const alphaInput = $(`[data-alpha-key="${key}"]`);
+    const fill = $(`[data-swatch-fill="${key}"]`);
+
+    if (picker) picker.value = hex;
+    if (hexInput && document.activeElement !== hexInput) hexInput.value = value;
+    if (alphaInput) {
+      alphaInput.value = alpha;
+      alphaInput.title = `Opacity ${alpha}%`;
+    }
+    if (fill) fill.style.background = value;
     updatePreview();
   }
 

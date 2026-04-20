@@ -171,6 +171,7 @@ class CalendarRenderer {
     if (layout === 'sidebar')     classes.push('layout-sidebar');
     if (layout === 'single-page') classes.push('layout-single-page');
     if (hasCombined)              classes.push('flow-combined');
+    if (isTransparentColor((this.config.colors || {}).background)) classes.push('is-transparent');
 
     const app = el('div', classes.join(' '));
     app.id = 'ct-app';
@@ -882,4 +883,12 @@ function el(tag, className) {
   const e = document.createElement(tag);
   if (className) e.className = className;
   return e;
+}
+
+// True when the color would render as fully see-through.
+function isTransparentColor(v) {
+  if (!v) return false;
+  if (v === 'transparent') return true;
+  const m = /^#[0-9A-Fa-f]{6}([0-9A-Fa-f]{2})$/.exec(v);
+  return m && v.slice(-2).toLowerCase() === '00';
 }
