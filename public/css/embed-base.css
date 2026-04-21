@@ -66,7 +66,7 @@ html, body {
   background: var(--ct-bg);
   border-radius: calc(var(--ct-radius) + 4px);
   box-shadow: 0 1px 2px var(--ct-shadow), 0 12px 32px var(--ct-shadow);
-  zoom: 1.3;
+  zoom: 1.15;
 }
 
 #ct-app.layout-sidebar,
