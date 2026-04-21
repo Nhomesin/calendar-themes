@@ -79,26 +79,17 @@
     try {
       const style = document.createElement('style');
       style.id = PRE_HIDE_STYLE_ID;
-      // Hide the container's children (not the container itself) with
-      // visibility:hidden — display:none would collapse the page layout
-      // and stop GHL's Vue bundle from mounting + fetching, which we
-      // need to intercept the calendar_id. The container gets a reserved
-      // min-height plus a neutral ::after spinner so the visitor sees a
-      // loading state rather than a blank gap.
-      const sel = PRE_HIDE_SELECTORS.join(',');
-      const childSel = PRE_HIDE_SELECTORS.map((s) => s + '>*').join(',');
-      const afterSel = PRE_HIDE_SELECTORS.map((s) => s + '::after').join(',');
+      // display:none collapses the container entirely — zero gap, zero
+      // reserved space, no loading indicator. Vue's mount/fetch lifecycle
+      // still fires on display:none nodes, so our network tap can still
+      // capture the calendar_id. On decision we either:
+      //   • unthemed → remove this style, GHL renders as normal
+      //   • themed   → override inline with display:block and inject
+      //                our themed iframe
       style.textContent =
-        sel + '{position:relative!important;min-height:400px!important}' +
-        childSel + '{visibility:hidden!important}' +
-        afterSel +
-        '{content:"";position:absolute;top:50%;left:50%;width:28px;height:28px;' +
-        'margin:-14px 0 0 -14px;border:3px solid rgba(0,0,0,.08);' +
-        'border-top-color:rgba(0,0,0,.4);border-radius:50%;' +
-        'animation:__ctspin .8s linear infinite;z-index:1;pointer-events:none}' +
-        '@keyframes __ctspin{to{transform:rotate(360deg)}}';
+        PRE_HIDE_SELECTORS.join(',') + '{display:none!important}';
       (document.head || document.documentElement).appendChild(style);
-      log('pre-hide style injected');
+      log('pre-hide style injected (display:none)');
     } catch (_) {}
   }
 
@@ -667,7 +658,7 @@
     const resetStyle =
       'padding:0 !important;margin:0 !important;min-height:0 !important;' +
       'height:auto !important;max-height:none !important;position:relative;' +
-      'display:block;width:100%;' +
+      'display:block !important;width:100%;' +
       'visibility:visible !important;';
     container.setAttribute('style', resetStyle);
 

@@ -478,25 +478,16 @@
     if (!block || !codeEl || !copyBtn) return;
 
     // Split closing tags so the surrounding HTML parser doesn't treat
-    // them as real </style> / </script>. The inline <style> hides GHL's
-    // stock calendar children at parse time (no flash of unthemed
-    // calendar) and renders a neutral ::after spinner so the area shows
-    // a loading state instead of a blank gap.
+    // them as real </style> / </script>. The inline <style> collapses
+    // GHL's stock calendar container to display:none from HTML parse
+    // time — zero reserved space, zero flash. Pixel then either
+    // overrides display to inject a themed iframe or removes the style
+    // entirely to reveal the stock calendar.
     const SEL =
       '#calendarAppointmentBookingMain,#appointment_widgets--revamp,' +
       '.c-calendar.c-wrapper,div[id^="calendar-kl-"],' +
       'div[class*="booking-calendar-"]';
-    const CHILD = SEL.split(',').map((s) => s + '>*').join(',');
-    const AFTER = SEL.split(',').map((s) => s + '::after').join(',');
-    const preHideCss =
-      SEL + '{position:relative!important;min-height:400px!important}' +
-      CHILD + '{visibility:hidden!important}' +
-      AFTER +
-      '{content:"";position:absolute;top:50%;left:50%;width:28px;height:28px;' +
-      'margin:-14px 0 0 -14px;border:3px solid rgba(0,0,0,.08);' +
-      'border-top-color:rgba(0,0,0,.4);border-radius:50%;' +
-      'animation:__ctspin .8s linear infinite;z-index:1;pointer-events:none}' +
-      '@keyframes __ctspin{to{transform:rotate(360deg)}}';
+    const preHideCss = SEL + '{display:none!important}';
     const snippet =
       '<style>' + preHideCss + '<' + '/style>\n' +
       '<script src="' + BASE_URL + '/pixel.js" async><' + '/script>';
