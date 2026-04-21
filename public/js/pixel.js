@@ -79,18 +79,19 @@
     try {
       const style = document.createElement('style');
       style.id = PRE_HIDE_STYLE_ID;
-      // Collapse to zero height (no visible gap) but keep the element
-      // in-flow and visible to GHL's Vue bundle so mount lifecycle
-      // fires normally. display:none was breaking Vue's render path
-      // on cached reloads — the visitor saw nothing because GHL's
-      // calendar never mounted into the hidden container.
+      // Off-screen positioning instead of height:0 / display:none.
+      // position:absolute takes the element out of flow (no visible
+      // gap on the page) but keeps its natural dimensions, so GHL's
+      // Vue bundle mounts and lays out the calendar at full size.
+      // When we remove this style on an unthemed decision, the
+      // already-laid-out children reveal in their correct positions.
       style.textContent =
         PRE_HIDE_SELECTORS.join(',') +
-        '{visibility:hidden!important;height:0!important;min-height:0!important;' +
-        'max-height:0!important;overflow:hidden!important;margin:0!important;' +
-        'padding:0!important;border-width:0!important}';
+        '{position:absolute!important;left:-99999px!important;top:0!important;' +
+        'visibility:hidden!important;pointer-events:none!important;' +
+        'width:100vw!important;max-width:100vw!important;z-index:-9999!important}';
       (document.head || document.documentElement).appendChild(style);
-      log('pre-hide style injected (collapse)');
+      log('pre-hide style injected (off-screen)');
     } catch (_) {}
   }
 
@@ -663,11 +664,15 @@
     // iframe dictates the final size. !important beats stylesheet rules
     // that target the container by class. Also force visibility:visible
     // to override the pre-hide style we injected at boot.
+    // Override every pre-hide property back to normal so our iframe
+    // lays out in the natural flow where the calendar used to sit.
     const resetStyle =
-      'padding:0 !important;margin:0 !important;min-height:0 !important;' +
-      'height:auto !important;max-height:none !important;overflow:visible !important;' +
-      'border-width:0;position:relative;display:block !important;width:100% !important;' +
-      'visibility:visible !important;';
+      'position:relative !important;left:auto !important;top:auto !important;' +
+      'width:100% !important;max-width:none !important;z-index:auto !important;' +
+      'visibility:visible !important;pointer-events:auto !important;' +
+      'display:block !important;padding:0 !important;margin:0 !important;' +
+      'min-height:0 !important;height:auto !important;max-height:none !important;' +
+      'overflow:visible !important;';
     container.setAttribute('style', resetStyle);
 
     const iframe = document.createElement('iframe');

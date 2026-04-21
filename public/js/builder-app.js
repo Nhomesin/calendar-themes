@@ -491,9 +491,9 @@
       'div[class*="booking-calendar-"]';
     const preHideCss =
       SEL +
-      '{visibility:hidden!important;height:0!important;min-height:0!important;' +
-      'max-height:0!important;overflow:hidden!important;margin:0!important;' +
-      'padding:0!important;border-width:0!important}';
+      '{position:absolute!important;left:-99999px!important;top:0!important;' +
+      'visibility:hidden!important;pointer-events:none!important;' +
+      'width:100vw!important;max-width:100vw!important;z-index:-9999!important}';
     const snippet =
       '<style>' + preHideCss + '<' + '/style>\n' +
       '<script src="' + BASE_URL + '/pixel.js" async><' + '/script>';
