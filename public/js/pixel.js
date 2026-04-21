@@ -79,12 +79,24 @@
     try {
       const style = document.createElement('style');
       style.id = PRE_HIDE_STYLE_ID;
-      // Just visibility:hidden — not display:none — so GHL's Vue bundle
-      // still mounts into it, its fetch fires (so we can intercept the
-      // calendar_id), and the surrounding funnel layout doesn't collapse.
+      // Hide the container's children (not the container itself) with
+      // visibility:hidden — display:none would collapse the page layout
+      // and stop GHL's Vue bundle from mounting + fetching, which we
+      // need to intercept the calendar_id. The container gets a reserved
+      // min-height plus a neutral ::after spinner so the visitor sees a
+      // loading state rather than a blank gap.
+      const sel = PRE_HIDE_SELECTORS.join(',');
+      const childSel = PRE_HIDE_SELECTORS.map((s) => s + '>*').join(',');
+      const afterSel = PRE_HIDE_SELECTORS.map((s) => s + '::after').join(',');
       style.textContent =
-        PRE_HIDE_SELECTORS.join(',') +
-        '{visibility:hidden!important}';
+        sel + '{position:relative!important;min-height:400px!important}' +
+        childSel + '{visibility:hidden!important}' +
+        afterSel +
+        '{content:"";position:absolute;top:50%;left:50%;width:28px;height:28px;' +
+        'margin:-14px 0 0 -14px;border:3px solid rgba(0,0,0,.08);' +
+        'border-top-color:rgba(0,0,0,.4);border-radius:50%;' +
+        'animation:__ctspin .8s linear infinite;z-index:1;pointer-events:none}' +
+        '@keyframes __ctspin{to{transform:rotate(360deg)}}';
       (document.head || document.documentElement).appendChild(style);
       log('pre-hide style injected');
     } catch (_) {}
@@ -637,6 +649,11 @@
     ensureKeyframes();
     container.dataset.ctSwapped = '1';
     log('swapping inline calendar', { id, container });
+
+    // Our iframe will be a child of `container`; the pre-hide rule hides
+    // all children via `> *`, so lift it before we inject — our own
+    // skeleton + opacity transition will handle the fade.
+    removePreHideStyle('themed swap');
 
     // Clear the Vue-rendered UI and replace with our themed iframe. The
     // container becomes a simple iframe host; Vue's reactive state goes
