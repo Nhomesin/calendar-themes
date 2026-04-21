@@ -55,6 +55,53 @@
 
   log('booting v' + PIXEL.version, { base: APP_BASE, host: location.hostname, href: location.href });
 
+  // ─── Pre-hide GHL calendar containers (first thing we do) ──────────────
+  // Without this, the stock GHL calendar paints before our pixel resolves
+  // and swaps — the visitor sees a flash of the wrong calendar. We inject
+  // a style that makes known calendar hosts invisible from the moment the
+  // pixel is parsed. Layout is preserved (visibility: hidden, not display)
+  // so GHL's Vue bundle still mounts, fetches calendar data, and triggers
+  // our network interception. We lift the hide once we've decided:
+  //   • themed   → swap inline, container becomes visible with our iframe
+  //   • unthemed → remove the style, GHL's stock calendar reveals
+  //   • no decision within 5s → safety timeout removes the style anyway
+  const PRE_HIDE_STYLE_ID = '__ct-pixel-pre-hide';
+  const PRE_HIDE_SELECTORS = [
+    '#calendarAppointmentBookingMain',
+    '#appointment_widgets--revamp',
+    '.c-calendar.c-wrapper',
+    'div[id^="calendar-kl-"]',
+    'div[class*="booking-calendar-"]',
+  ];
+
+  function injectPreHideStyle() {
+    if (document.getElementById(PRE_HIDE_STYLE_ID)) return;
+    try {
+      const style = document.createElement('style');
+      style.id = PRE_HIDE_STYLE_ID;
+      // Just visibility:hidden — not display:none — so GHL's Vue bundle
+      // still mounts into it, its fetch fires (so we can intercept the
+      // calendar_id), and the surrounding funnel layout doesn't collapse.
+      style.textContent =
+        PRE_HIDE_SELECTORS.join(',') +
+        '{visibility:hidden!important}';
+      (document.head || document.documentElement).appendChild(style);
+      log('pre-hide style injected');
+    } catch (_) {}
+  }
+
+  function removePreHideStyle(reason) {
+    const el = document.getElementById(PRE_HIDE_STYLE_ID);
+    if (!el) return;
+    el.remove();
+    log('pre-hide style removed', reason || '');
+  }
+
+  injectPreHideStyle();
+  // Safety net: if resolve never fires or nothing matches, reveal after 5s
+  // so we never leave a visitor looking at a blank spot on the funnel.
+  setTimeout(() => removePreHideStyle('safety timeout'), 5000);
+
   // ─── Network interception (early, before GHL runtime fires) ─────────────
   // GHL's funnel Calendar element doesn't use an iframe — it renders
   // inline via a Vue bundle that calls backend.leadconnectorhq.com or
@@ -558,16 +605,20 @@
   function applyInlineCalendar(id) {
     const hit = resolved.get(id);
     if (!hit) {
-      log('inline calendar', id, 'is not themed — leaving GHL widget alone');
+      log('inline calendar', id, 'is not themed — revealing GHL original');
+      removePreHideStyle('unthemed calendar, reveal original');
       return;
     }
     const container = findInlineContainer();
     if (!container) {
       warn('no inline calendar container found in DOM — cannot swap ' + id);
-      // Try again shortly in case GHL's runtime is still mounting
+      // Try again shortly in case GHL's runtime is still mounting. We keep
+      // the pre-hide in place during the retry window so the visitor does
+      // not see the stock calendar flash through.
       setTimeout(() => {
         const c = findInlineContainer();
         if (c) swapInlineCalendar(id, hit, c);
+        else removePreHideStyle('container never found, fall back to original');
       }, 1500);
       return;
     }
@@ -594,11 +645,13 @@
     container.innerHTML = '';
     // Reset whatever layout/padding GHL computed onto this host so our
     // iframe dictates the final size. !important beats stylesheet rules
-    // that target the container by class.
+    // that target the container by class. Also force visibility:visible
+    // to override the pre-hide style we injected at boot.
     const resetStyle =
       'padding:0 !important;margin:0 !important;min-height:0 !important;' +
       'height:auto !important;max-height:none !important;position:relative;' +
-      'display:block;width:100%;';
+      'display:block;width:100%;' +
+      'visibility:visible !important;';
     container.setAttribute('style', resetStyle);
 
     const iframe = document.createElement('iframe');

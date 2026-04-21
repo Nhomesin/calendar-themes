@@ -477,9 +477,16 @@
     const copyBtn = document.querySelector('[data-pixel-copy]');
     if (!block || !codeEl || !copyBtn) return;
 
-    // Split the closing tag so the surrounding HTML parser doesn't treat
-    // this as a real </script>.
-    const snippet = '<script src="' + BASE_URL + '/pixel.js" async><' + '/script>';
+    // Split closing tags so the surrounding HTML parser doesn't treat
+    // them as real </style> / </script>. The inline <style> hides GHL's
+    // stock calendar containers at parse time so the visitor never sees
+    // a flash of the unthemed calendar before the pixel swaps.
+    const snippet =
+      '<style>#calendarAppointmentBookingMain,#appointment_widgets--revamp,' +
+      '.c-calendar.c-wrapper,div[id^="calendar-kl-"],' +
+      'div[class*="booking-calendar-"]{visibility:hidden!important}' +
+      '<' + '/style>\n' +
+      '<script src="' + BASE_URL + '/pixel.js" async><' + '/script>';
     codeEl.textContent = snippet;
 
     copyBtn.onclick = async () => {
