@@ -30,7 +30,9 @@
     log('already loaded, skipping');
     return;
   }
-  const PIXEL = (window.__calthemePixel = { version: '1.1.0' });
+  const PIXEL = (window.__calthemePixel = { version: '1.2.0' });
+  PIXEL.network = []; // every URL we see
+  PIXEL.foundIds = new Set(); // distinct Mongo IDs we've seen anywhere
 
   // ─── APP_BASE derivation ────────────────────────────────────────────────
   const scriptEl =
@@ -52,6 +54,101 @@
   PIXEL.base = APP_BASE;
 
   log('booting v' + PIXEL.version, { base: APP_BASE, host: location.hostname, href: location.href });
+
+  // ─── Network interception (early, before GHL runtime fires) ─────────────
+  // GHL's funnel Calendar element doesn't use an iframe — it renders
+  // inline via a Vue bundle that calls backend.leadconnectorhq.com or
+  // similar, embedding the real calendar_id in the request URL. We tap
+  // fetch + XHR to capture any Mongo-looking ID that flies by.
+  const MONGO_RE = /[a-f0-9]{24}/gi;
+  const GHL_BACKEND_RE = /(leadconnectorhq|msgsndr|gohighlevel)\.com/i;
+
+  function recordId(id, source) {
+    if (!id || PIXEL.foundIds.has(id)) return;
+    PIXEL.foundIds.add(id);
+    log('captured Mongo ID', { id, source });
+    onCalendarIdDiscovered(id);
+  }
+
+  function inspectUrl(url) {
+    if (!url || typeof url !== 'string') return;
+    try {
+      PIXEL.network.push(url);
+      if (PIXEL.network.length > 200) PIXEL.network.shift();
+      if (!GHL_BACKEND_RE.test(url)) return;
+      const ids = url.match(MONGO_RE);
+      if (ids) ids.forEach((id) => recordId(id, url));
+    } catch (_) {}
+  }
+
+  try {
+    const origFetch = window.fetch;
+    if (origFetch) {
+      window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : input && input.url;
+        inspectUrl(url);
+        return origFetch.apply(this, arguments);
+      };
+    }
+  } catch (_) {}
+
+  try {
+    const origOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      inspectUrl(url);
+      return origOpen.apply(this, arguments);
+    };
+  } catch (_) {}
+
+  // Our <script async> races with GHL's calendar bundle. If GHL's fetch
+  // fires before we patch, we can still see it in resource timing.
+  function scanPerformanceResources() {
+    try {
+      const entries = performance.getEntriesByType
+        ? performance.getEntriesByType('resource')
+        : [];
+      entries.forEach((e) => inspectUrl(e.name));
+    } catch (_) {}
+  }
+  scanPerformanceResources();
+  setInterval(scanPerformanceResources, 1500);
+
+  // Vue component introspection — once GHL's Vue bundle mounts the
+  // calendar, the calendar_id typically lives on the component props.
+  function scanVueInstance() {
+    try {
+      const hosts = document.querySelectorAll(
+        '#calendarAppointmentBookingMain, #appointment_widgets--revamp, .c-calendar, div[id^="calendar-kl-"]'
+      );
+      hosts.forEach((el) => {
+        const vc =
+          el.__vueParentComponent ||
+          el.__vue_app__ ||
+          el.__vue__ ||
+          (el.childNodes[0] && el.childNodes[0].__vueParentComponent);
+        if (!vc) return;
+        const cand = [
+          vc.props,
+          vc.attrs,
+          vc.ctx,
+          vc.proxy && vc.proxy.$data,
+          vc.proxy && vc.proxy.$props,
+          vc.$props,
+          vc.$data,
+          vc.$options && vc.$options.propsData,
+        ];
+        cand.forEach((obj) => {
+          if (!obj) return;
+          try {
+            const s = JSON.stringify(obj, (k, v) => (typeof v === 'function' ? undefined : v));
+            const ids = s && s.match(MONGO_RE);
+            if (ids) ids.forEach((id) => recordId(id, 'vue-state'));
+          } catch (_) {}
+        });
+      });
+    } catch (_) {}
+  }
+  setInterval(scanVueInstance, 1500);
 
   // ─── Editor guard (narrow) ──────────────────────────────────────────────
   // Only skip inside the GHL builder app itself. Many published GHL funnels
@@ -321,6 +418,22 @@
       }
       console.log('== suspicious window.* keys ==\n  ' + hints.join(', '));
 
+      // 7. Network activity seen by our interception + resource-timing
+      scanPerformanceResources();
+      console.log('== URLs observed (' + PIXEL.network.length + ') — GHL-ish only ==');
+      PIXEL.network
+        .filter((u) => GHL_BACKEND_RE.test(u))
+        .slice(-40)
+        .forEach((u) => console.log('  ' + u));
+
+      // 8. IDs we already captured
+      if (PIXEL.foundIds.size) {
+        console.log('== captured Mongo IDs (' + PIXEL.foundIds.size + ') ==');
+        PIXEL.foundIds.forEach((id) => console.log('  ' + id));
+      } else {
+        console.log('== captured Mongo IDs: none yet ==');
+      }
+
       console.groupEnd();
       console.log('[CalTheme Pixel] diagnose() done. Run window.__calthemePixel.diagnose() to re-run.');
     } catch (err) {
@@ -375,6 +488,10 @@
 
   // ─── Apply per element ─────────────────────────────────────────────────
   function apply(id, el) {
+    if (el === '__inline__') {
+      applyInlineCalendar(id);
+      return;
+    }
     const hit = resolved.get(id);
     if (!hit) {
       log('no theme for', id, '— leaving untouched');
@@ -388,6 +505,114 @@
       log('preempting div for', id, hit);
       preemptDiv(el, id, hit);
     }
+  }
+
+  // ─── Inline-calendar swap (GHL native funnel Calendar element) ─────────
+  // GHL's funnel Calendar element renders a full Vue app inline into a
+  // host div (no iframe). We replace that host div's children with our
+  // themed iframe once we have the real calendar_id (discovered by
+  // sniffing GHL's network calls).
+
+  const INLINE_SELECTORS = [
+    '#calendarAppointmentBookingMain',
+    '#appointment_widgets--revamp',
+    '.c-calendar.c-wrapper',
+    'div[id^="calendar-kl-"]',
+    'div[class*="booking-calendar-"]',
+  ];
+
+  function findInlineContainer() {
+    for (const sel of INLINE_SELECTORS) {
+      const el = document.querySelector(sel);
+      if (el && !el.dataset.ctSwapped) return el;
+    }
+    return null;
+  }
+
+  function onCalendarIdDiscovered(id) {
+    if (resolved.has(id)) {
+      applyInlineCalendar(id);
+      return;
+    }
+    if (!pending.has(id)) pending.set(id, new Set());
+    pending.get(id).add('__inline__');
+    if (flushTimer) clearTimeout(flushTimer);
+    flushTimer = setTimeout(flush, FLUSH_DEBOUNCE_MS);
+  }
+
+  function applyInlineCalendar(id) {
+    const hit = resolved.get(id);
+    if (!hit) {
+      log('inline calendar', id, 'is not themed — leaving GHL widget alone');
+      return;
+    }
+    const container = findInlineContainer();
+    if (!container) {
+      warn('no inline calendar container found in DOM — cannot swap ' + id);
+      // Try again shortly in case GHL's runtime is still mounting
+      setTimeout(() => {
+        const c = findInlineContainer();
+        if (c) swapInlineCalendar(id, hit, c);
+      }, 1500);
+      return;
+    }
+    swapInlineCalendar(id, hit, container);
+  }
+
+  function swapInlineCalendar(id, hit, container) {
+    if (container.dataset.ctSwapped === '1') return;
+    ensureKeyframes();
+    container.dataset.ctSwapped = '1';
+    log('swapping inline calendar', { id, container });
+
+    // Clear the Vue-rendered UI and replace with our themed iframe. The
+    // container becomes a simple iframe host; Vue's reactive state goes
+    // orphaned but that's fine — it won't try to re-mount onto a detached
+    // subtree.
+    container.innerHTML = '';
+    container.style.position = 'relative';
+    if (!container.style.minHeight) container.style.minHeight = '640px';
+    container.style.display = 'block';
+    container.style.width = '100%';
+
+    const iframe = document.createElement('iframe');
+    iframe.dataset.ctSwapped = '1';
+    iframe.setAttribute('title', 'Book an appointment');
+    iframe.setAttribute('allow', 'payment');
+    iframe.style.cssText =
+      'width:100%;min-height:640px;border:0;display:block;opacity:0;' +
+      'transition:opacity .35s ease;position:relative;z-index:2;';
+    container.appendChild(iframe);
+
+    const skeleton = makeSkeleton(hit.primaryColor);
+    container.appendChild(skeleton);
+
+    const onLoad = () => {
+      iframe.style.opacity = '1';
+      skeleton.style.opacity = '0';
+      setTimeout(() => {
+        if (skeleton.parentNode) skeleton.parentNode.removeChild(skeleton);
+      }, SKELETON_FADE_MS);
+      iframe.removeEventListener('load', onLoad);
+    };
+    iframe.addEventListener('load', onLoad);
+
+    try { iframe.src = themedUrl(id, hit); } catch (_) {}
+
+    // If GHL's runtime re-mounts into the container, evict its injection.
+    try {
+      const mo = new MutationObserver((records) => {
+        for (const r of records) {
+          r.addedNodes.forEach((n) => {
+            if (n === iframe || n === skeleton) return;
+            if (n.nodeType === 1) {
+              try { n.remove(); } catch (_) {}
+            }
+          });
+        }
+      });
+      mo.observe(container, { childList: true });
+    } catch (_) {}
   }
 
   // ─── Iframe swap ───────────────────────────────────────────────────────
