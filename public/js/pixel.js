@@ -14,8 +14,23 @@
 (function () {
   'use strict';
 
-  if (window.__calthemePixel) return;
-  const PIXEL = (window.__calthemePixel = { version: '1.0.0' });
+  // Verbose logging — opt-out with ?ctpixel=silent on the script src, or
+  // set window.__ctPixelSilent = true before the script loads.
+  const LOG_PREFIX = '[CalTheme Pixel]';
+  function log() {
+    if (window.__ctPixelSilent) return;
+    try { console.log.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (_) {}
+  }
+  function warn() {
+    if (window.__ctPixelSilent) return;
+    try { console.warn.apply(console, [LOG_PREFIX].concat([].slice.call(arguments))); } catch (_) {}
+  }
+
+  if (window.__calthemePixel) {
+    log('already loaded, skipping');
+    return;
+  }
+  const PIXEL = (window.__calthemePixel = { version: '1.1.0' });
 
   // ─── APP_BASE derivation ────────────────────────────────────────────────
   const scriptEl =
@@ -23,30 +38,38 @@
     Array.from(document.getElementsByTagName('script')).find(
       (s) => s.src && /\/pixel\.js(\?|$)/.test(s.src)
     );
-  if (!scriptEl || !scriptEl.src) return;
+  if (!scriptEl || !scriptEl.src) {
+    warn('could not locate own <script> tag — aborting');
+    return;
+  }
   let APP_BASE;
   try {
     APP_BASE = new URL(scriptEl.src).origin;
   } catch (_) {
+    warn('invalid script src — aborting');
     return;
   }
   PIXEL.base = APP_BASE;
 
-  // ─── Editor / preview guard ────────────────────────────────────────────
-  // Never mutate the GHL builder itself or any internal GHL/LeadConnector
-  // domain. Customer-owned funnel domains are everything else.
-  const host = location.hostname || '';
-  if (
-    /(^|\.)gohighlevel\.com$/i.test(host) ||
-    /(^|\.)leadconnectorhq\.com$/i.test(host) ||
-    /(^|\.)msgsndr\.com$/i.test(host)
-  ) {
+  log('booting v' + PIXEL.version, { base: APP_BASE, host: location.hostname, href: location.href });
+
+  // ─── Editor guard (narrow) ──────────────────────────────────────────────
+  // Only skip inside the GHL builder app itself. Many published GHL funnels
+  // live on *.gohighlevel.com subdomains, so we MUST NOT bail on those.
+  const host = (location.hostname || '').toLowerCase();
+  const isBuilder =
+    host === 'app.gohighlevel.com' ||
+    host === 'app.msgsndr.com' ||
+    host === 'marketplace.gohighlevel.com';
+  if (isBuilder) {
+    log('running on GHL builder host (' + host + ') — skipping mutations');
+    PIXEL.skipped = 'builder-host';
     return;
   }
 
   // ─── Constants ─────────────────────────────────────────────────────────
   const GHL_HOST_RE =
-    /^https?:\/\/(api\.leadconnectorhq\.com|link\.msgsndr\.com|widgets\.leadconnectorhq\.com|[^/?#]*\.msgsndr\.com)/i;
+    /^https?:\/\/([^/?#]*\.leadconnectorhq\.com|[^/?#]*\.msgsndr\.com)/i;
   const BOOKING_PATH = '/widget/booking/';
   const FLUSH_DEBOUNCE_MS = 150;
   const CACHE_KEY = '__ct_resolved_v1';
@@ -109,16 +132,27 @@
 
   function scan(root) {
     root = root || document;
-    // Iframes
+    const rootLabel = root === document ? 'document' : (root.tagName || 'node');
+    let matched = 0;
+    let iframeSeen = 0;
+    let skippedSrcs = [];
+
     const iframes = root.querySelectorAll ? root.querySelectorAll('iframe[src]') : [];
     for (let i = 0; i < iframes.length; i++) {
       const iframe = iframes[i];
       if (iframe.dataset.ctSwapped || iframe.dataset.ctChecked) continue;
+      iframeSeen++;
       const id = calendarIdFromIframe(iframe);
-      if (id) queue(id, iframe);
+      if (id) {
+        matched++;
+        log('matched iframe', { id, src: iframe.getAttribute('src') });
+        queue(id, iframe);
+      } else {
+        const src = iframe.getAttribute('src') || '';
+        if (src) skippedSrcs.push(src);
+      }
     }
-    // Div-embed pattern. Limit to data-calendar(-id) explicitly so we never
-    // touch form divs (data-form-id), which share the same loader script.
+
     const divs = root.querySelectorAll
       ? root.querySelectorAll('div[data-calendar-id], div[data-calendar]')
       : [];
@@ -126,8 +160,20 @@
       const div = divs[i];
       if (div.dataset.ctPreempted || div.dataset.ctChecked) continue;
       const id = (div.dataset.calendarId || div.dataset.calendar || '').trim();
-      if (id) queue(id, div);
+      if (id) {
+        matched++;
+        log('matched div-embed', { id, div });
+        queue(id, div);
+      }
     }
+
+    log('scan complete', {
+      root: rootLabel,
+      iframesSeen: iframeSeen,
+      divsSeen: divs.length,
+      matched,
+      skippedIframeSrcs: skippedSrcs.slice(0, 8),
+    });
   }
 
   // ─── Queue + flush ─────────────────────────────────────────────────────
@@ -146,6 +192,8 @@
     flushTimer = null;
     if (pending.size === 0) return;
     const ids = Array.from(pending.keys());
+    log('resolving', ids);
+
     let data = null;
     try {
       const res = await fetch(APP_BASE + '/api/pixel/resolve', {
@@ -153,10 +201,15 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ calendarIds: ids }),
       });
+      log('resolve response', { status: res.status, ok: res.ok });
       if (res.ok) data = await res.json();
-    } catch (_) { /* offline / blocked — leave everything alone */ }
+      else warn('resolve returned non-OK status', res.status);
+    } catch (err) {
+      warn('resolve fetch failed', err && err.message ? err.message : err);
+    }
 
     const resolvedMap = (data && data.resolved) || {};
+    log('resolved map', resolvedMap);
 
     for (const id of ids) {
       const hit = resolvedMap[id] || null;
@@ -172,11 +225,17 @@
   function apply(id, el) {
     const hit = resolved.get(id);
     if (!hit) {
+      log('no theme for', id, '— leaving untouched');
       try { el.dataset.ctChecked = '1'; } catch (_) {}
       return;
     }
-    if (el.tagName === 'IFRAME') swapIframe(el, id, hit);
-    else preemptDiv(el, id, hit);
+    if (el.tagName === 'IFRAME') {
+      log('swapping iframe for', id, hit);
+      swapIframe(el, id, hit);
+    } else {
+      log('preempting div for', id, hit);
+      preemptDiv(el, id, hit);
+    }
   }
 
   // ─── Iframe swap ───────────────────────────────────────────────────────
@@ -360,7 +419,10 @@
 
   // ─── MutationObserver for late injections ──────────────────────────────
   function startObserver() {
-    if (!document.body) return;
+    if (!document.body) {
+      warn('document.body missing — cannot start observer yet');
+      return;
+    }
     try {
       const mo = new MutationObserver((records) => {
         for (const r of records) {
@@ -371,18 +433,37 @@
       });
       mo.observe(document.body, { childList: true, subtree: true });
       PIXEL.observer = mo;
-    } catch (_) { /* ignore */ }
+      log('MutationObserver active on document.body');
+    } catch (err) {
+      warn('MutationObserver failed', err);
+    }
   }
 
   // ─── Bootstrap ─────────────────────────────────────────────────────────
   function boot() {
+    log('boot scan starting');
     scan(document);
     startObserver();
+    // Funnel builders often stream in content after DOMContentLoaded and
+    // after the initial load event. A couple of follow-up scans cover those
+    // cases without relying on MutationObserver firing for every subtree.
+    setTimeout(() => { log('follow-up scan @1s'); scan(document); }, 1000);
+    setTimeout(() => { log('follow-up scan @3s'); scan(document); }, 3000);
+    setTimeout(() => { log('follow-up scan @6s'); scan(document); }, 6000);
   }
 
+  // Expose a tiny debug API so we can re-trigger a scan from DevTools:
+  //   window.__calthemePixel.scan()  // force another sweep
+  //   window.__calthemePixel.resolved   // cached resolutions
+  PIXEL.scan = () => scan(document);
+  PIXEL.resolved = resolved;
+  PIXEL.pending = pending;
+
   if (document.readyState === 'loading') {
+    log('waiting for DOMContentLoaded');
     document.addEventListener('DOMContentLoaded', boot, { once: true });
   } else {
+    log('document already interactive — booting immediately');
     boot();
   }
 })();
