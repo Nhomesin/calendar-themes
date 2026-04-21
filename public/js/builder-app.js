@@ -713,7 +713,7 @@
       el.className = 'assignment-form-meta muted';
       el.innerHTML = `
         <svg class="form-meta-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7h5M5.5 10h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-        <span>No form attached in GHL · falling back to standard fields (${info.fieldCount} total)</span>
+        <span>No form attached in GHL · using default form (name, email, phone, notes)</span>
       `;
       return;
     }

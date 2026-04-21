@@ -109,13 +109,27 @@ function normalizeLocationCustomField(f) {
   };
 }
 
-// Standard contact fields a calendar's booking form always collects.
+// Standard contact fields we include alongside location custom fields when a
+// calendar has a GHL form attached.
 function standardContactFields() {
   return [
     { name: 'firstName', label: 'First name', type: 'text', required: true, placeholder: 'Jane' },
     { name: 'lastName',  label: 'Last name',  type: 'text', required: false, placeholder: 'Doe' },
     { name: 'email',     label: 'Email',      type: 'email', required: true, placeholder: 'jane@example.com' },
     { name: 'phone',     label: 'Phone',      type: 'tel',   required: false, placeholder: '+1 (555) 000-0000' },
+  ];
+}
+
+// GHL's "default form" — what the native booking widget collects when no
+// custom form is attached to the calendar: name, email, phone, and notes.
+// We keep `name` as a single field; the booking route splits it into
+// first/last before hitting GHL.
+function defaultBookingFields() {
+  return [
+    { name: 'name',  label: 'Full name',            type: 'text',     required: true,  placeholder: 'Jane Doe' },
+    { name: 'email', label: 'Email',                type: 'email',    required: true,  placeholder: 'jane@example.com' },
+    { name: 'phone', label: 'Phone',                type: 'tel',      required: false, placeholder: '+1 (555) 000-0000' },
+    { name: 'notes', label: 'Additional information', type: 'textarea', required: false, placeholder: 'Anything we should know…' },
   ];
 }
 
@@ -146,15 +160,31 @@ async function getCalendarFormFields(accessToken, locationId, calendarId) {
     const formId = cal.formId || null;
     console.log(`[CalForm] calendar ${calendarId} formId=${formId || '(none)'}`);
 
+    // No form attached on the GHL calendar → render the default booking form
+    // (name / email / phone / additional information). This is what the native
+    // widget shows in this case, so we match that behaviour exactly instead of
+    // dumping every location custom field into the UI.
+    if (!formId) {
+      const fields = defaultBookingFields();
+      const meta = {
+        calendarId,
+        formId: null,
+        formName: null,
+        standardCount: fields.length,
+        customFieldCount: 0,
+        source: 'default-booking-form',
+      };
+      console.log(`[CalForm] no form attached → default booking form (${fields.length} fields)`);
+      return { fields, meta };
+    }
+
     // Resolve the form name (best-effort — only for the UI hint).
     let formName = null;
-    if (formId) {
-      try {
-        const forms = await listForms(accessToken, locationId);
-        const match = forms.find(f => f.id === formId);
-        formName = match?.name || null;
-      } catch { /* non-fatal */ }
-    }
+    try {
+      const forms = await listForms(accessToken, locationId);
+      const match = forms.find(f => f.id === formId);
+      formName = match?.name || null;
+    } catch { /* non-fatal */ }
 
     const customs = await getLocationCustomFields(accessToken, locationId, 'contact');
     const customFields = (customs || [])
