@@ -199,50 +199,17 @@
     /^https?:\/\/([^/?#]*\.leadconnectorhq\.com|[^/?#]*\.msgsndr\.com)/i;
   const BOOKING_PATH = '/widget/booking/';
   const FLUSH_DEBOUNCE_MS = 150;
-  const CACHE_KEY = '__ct_resolved_v1';
-  const CACHE_TTL_MS = 10 * 60 * 1000;
   const SKELETON_FADE_MS = 350;
 
   // ─── State ─────────────────────────────────────────────────────────────
   // resolved[calendarId] = { locationId, primaryColor } | null   (null = unthemed)
+  // No sessionStorage cache — we want every page load to reflect the
+  // current assignment. If a user unassigns a theme, the next load must
+  // leave the page exactly as GHL rendered it, not pick up a stale
+  // "themed" entry and swap.
   const resolved = new Map();
   const pending = new Map(); // calendarId -> Set<Element>
   let flushTimer = null;
-
-  hydrateCache();
-
-  function hydrateCache() {
-    try {
-      const raw = sessionStorage.getItem(CACHE_KEY);
-      if (!raw) return;
-      const obj = JSON.parse(raw);
-      const now = Date.now();
-      for (const id in obj) {
-        const entry = obj[id];
-        if (!entry || (now - (entry.ts || 0)) > CACHE_TTL_MS) continue;
-        if (entry.unthemed) {
-          resolved.set(id, null);
-        } else if (entry.locationId) {
-          resolved.set(id, {
-            locationId: entry.locationId,
-            primaryColor: entry.primaryColor || '#6C63FF',
-          });
-        }
-      }
-    } catch (_) { /* ignore */ }
-  }
-
-  function persistCache() {
-    try {
-      const out = {};
-      const now = Date.now();
-      resolved.forEach((v, id) => {
-        if (v === null) out[id] = { unthemed: true, ts: now };
-        else out[id] = { locationId: v.locationId, primaryColor: v.primaryColor, ts: now };
-      });
-      sessionStorage.setItem(CACHE_KEY, JSON.stringify(out));
-    } catch (_) { /* ignore */ }
-  }
 
   // ─── Detection ─────────────────────────────────────────────────────────
   function calendarIdFromIframe(iframe) {
@@ -532,7 +499,6 @@
       pending.delete(id);
       if (set) set.forEach((el) => apply(id, el));
     }
-    persistCache();
   }
 
   // ─── Apply per element ─────────────────────────────────────────────────
@@ -609,6 +575,13 @@
   }
 
   function swapInlineCalendar(id, hit, container) {
+    // Belt-and-suspenders: never mutate the page if the calendar is not
+    // themed. Callers already guard on this, but it is critical that an
+    // unthemed calendar renders exactly as GHL intended.
+    if (!hit || !hit.locationId) {
+      log('swap aborted — no theme for', id);
+      return;
+    }
     if (container.dataset.ctSwapped === '1') return;
     ensureKeyframes();
     container.dataset.ctSwapped = '1';
