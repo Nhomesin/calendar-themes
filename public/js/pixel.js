@@ -619,17 +619,23 @@
     // orphaned but that's fine — it won't try to re-mount onto a detached
     // subtree.
     container.innerHTML = '';
-    container.style.position = 'relative';
-    if (!container.style.minHeight) container.style.minHeight = '640px';
-    container.style.display = 'block';
-    container.style.width = '100%';
+    // Reset whatever layout/padding GHL computed onto this host so our
+    // iframe dictates the final size. !important beats stylesheet rules
+    // that target the container by class.
+    const resetStyle =
+      'padding:0 !important;margin:0 !important;min-height:0 !important;' +
+      'height:auto !important;max-height:none !important;position:relative;' +
+      'display:block;width:100%;';
+    container.setAttribute('style', resetStyle);
 
     const iframe = document.createElement('iframe');
     iframe.dataset.ctSwapped = '1';
     iframe.setAttribute('title', 'Book an appointment');
     iframe.setAttribute('allow', 'payment');
+    // Small initial reserve so we don't collapse to 0 during load — the
+    // first ct-embed-height message replaces it with the exact size.
     iframe.style.cssText =
-      'width:100%;min-height:640px;border:0;display:block;opacity:0;' +
+      'width:100%;height:320px;border:0;display:block;opacity:0;' +
       'transition:opacity .35s ease;position:relative;z-index:2;';
     container.appendChild(iframe);
 
@@ -725,7 +731,10 @@
     iframe.style.opacity = '0';
     iframe.style.position = 'relative';
     iframe.style.zIndex = '2';
-    if (!iframe.style.minHeight) iframe.style.minHeight = '580px';
+    // Small initial reserve — the first ct-embed-height message replaces
+    // this with the exact content height (can shrink as well as grow).
+    iframe.style.height = '320px';
+    iframe.style.minHeight = '0';
 
     // Clear the in-flight GHL load, then point at our themed embed on the
     // next tick — this prevents a flash of partially-loaded stock content.
@@ -770,14 +779,15 @@
     while (div.firstChild) div.removeChild(div.firstChild);
 
     div.style.position = div.style.position || 'relative';
-    if (!div.style.minHeight) div.style.minHeight = '580px';
+    div.style.minHeight = '0';
+    div.style.padding = '0';
 
     const iframe = document.createElement('iframe');
     iframe.dataset.ctSwapped = '1';
     iframe.setAttribute('title', 'Book an appointment');
     iframe.setAttribute('allow', 'payment');
     iframe.style.cssText =
-      'width:100%;min-height:580px;border:0;display:block;opacity:0;' +
+      'width:100%;height:320px;border:0;display:block;opacity:0;' +
       'transition:opacity .35s ease;position:relative;z-index:2;';
     div.appendChild(iframe);
 
@@ -831,13 +841,15 @@
       const n = parseInt(e.data, 10);
       if (!isNaN(n)) h = n;
     }
-    if (h < 200) return;
+    if (h < 120) return;
 
-    // Match message source to one of our swapped iframes.
+    // Match message source to one of our swapped iframes and set the exact
+    // height — not min-height — so the frame can shrink as well as grow.
     const frames = document.querySelectorAll('iframe[data-ct-swapped="1"]');
     for (let i = 0; i < frames.length; i++) {
       if (frames[i].contentWindow === e.source) {
-        frames[i].style.minHeight = h + 'px';
+        frames[i].style.height = h + 'px';
+        frames[i].style.minHeight = '0';
         break;
       }
     }

@@ -46,11 +46,13 @@ html, body {
 /* ── App Shell ───────────────────────────────────────────────────────────── */
 
 /* The widget hugs its content: narrow card, centered, with a soft surface.
-   No forced 100vh — the iframe resizes to the widget via postMessage. */
+   No forced 100vh — the iframe resizes to the widget via postMessage.
+   Zero top/bottom margin so the iframe height matches the widget exactly;
+   hosts that want breathing room add it on their side. */
 #ct-app {
   width: 100%;
   max-width: 420px;
-  margin: 16px auto;
+  margin: 0 auto;
   padding: var(--ct-padding);
   display: flex;
   flex-direction: column;
