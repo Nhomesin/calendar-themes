@@ -181,8 +181,11 @@
     };
   } catch (_) {}
 
-  // Our <script async> races with GHL's calendar bundle. If GHL's fetch
-  // fires before we patch, we can still see it in resource timing.
+  // On a cached reload GHL's Vue bundle runs before our <script async>
+  // even parses, so the fetch intercept misses the call. Resource
+  // Timing is our recovery path. PerformanceObserver with
+  // `buffered: true` replays entries captured before we subscribed
+  // AND streams new ones — far faster than polling every 1.5s.
   function scanPerformanceResources() {
     try {
       const entries = performance.getEntriesByType
@@ -192,15 +195,26 @@
     } catch (_) {}
   }
   scanPerformanceResources();
-  setInterval(scanPerformanceResources, 1500);
+
+  try {
+    if (typeof PerformanceObserver === 'function') {
+      const po = new PerformanceObserver((list) => {
+        list.getEntries().forEach((e) => inspectUrl(e.name));
+      });
+      // buffered:true → get everything recorded so far plus future entries.
+      po.observe({ type: 'resource', buffered: true });
+    }
+  } catch (_) {}
 
   // Vue component introspection — once GHL's Vue bundle mounts the
   // calendar, the calendar_id typically lives on the component props.
+  const VUE_HOST_SELECTOR =
+    '#calendarAppointmentBookingMain, #appointment_widgets--revamp, ' +
+    '.c-calendar, div[id^="calendar-kl-"], div[class*="booking-calendar-"]';
+
   function scanVueInstance() {
     try {
-      const hosts = document.querySelectorAll(
-        '#calendarAppointmentBookingMain, #appointment_widgets--revamp, .c-calendar, div[id^="calendar-kl-"]'
-      );
+      const hosts = document.querySelectorAll(VUE_HOST_SELECTOR);
       hosts.forEach((el) => {
         const vc =
           el.__vueParentComponent ||
@@ -228,7 +242,78 @@
       });
     } catch (_) {}
   }
-  setInterval(scanVueInstance, 1500);
+
+  // Direct DOM sweep of any calendar container's descendant attrs +
+  // textContent. Covers cases where the calendar_id is rendered into
+  // an attribute (e.g. `href`, `data-booking-id`) or a nested JSON
+  // blob, without needing Vue internals or network timing.
+  function scanCalendarContainers() {
+    try {
+      const hosts = document.querySelectorAll(VUE_HOST_SELECTOR);
+      hosts.forEach((host) => {
+        // Attributes on the container itself and all descendants.
+        const scanEl = (el) => {
+          const attrs = el.getAttributeNames ? el.getAttributeNames() : [];
+          for (const n of attrs) {
+            const v = el.getAttribute(n) || '';
+            if (v) extractIds(v).forEach((id) => recordId(id, 'dom-attr@' + n));
+          }
+        };
+        scanEl(host);
+        host.querySelectorAll('*').forEach(scanEl);
+        // Text content (catches inline JSON blobs, `calendarId: "..."`).
+        const t = host.textContent;
+        if (t && t.length) {
+          extractIds(t).forEach((id) => recordId(id, 'container-text'));
+        }
+      });
+    } catch (_) {}
+  }
+
+  // Aggressive initial sweep: 250ms for 3 seconds, then 1.5s.
+  let __ctTicks = 0;
+  const __ctFastInterval = setInterval(() => {
+    __ctTicks++;
+    scanPerformanceResources();
+    scanVueInstance();
+    scanCalendarContainers();
+    // scanInlineScripts is defined later in the file; guard for load order.
+    if (typeof scanInlineScripts === 'function') scanInlineScripts();
+    if (__ctTicks >= 12) {
+      clearInterval(__ctFastInterval);
+      setInterval(() => {
+        scanPerformanceResources();
+        scanVueInstance();
+        scanCalendarContainers();
+        if (typeof scanInlineScripts === 'function') scanInlineScripts();
+      }, 1500);
+    }
+  }, 250);
+
+  // MutationObserver on any calendar container we see — fires on every
+  // Vue render/update and lets us re-scan instantly. Attaches lazily
+  // the first time scanCalendarContainers finds a host.
+  const __ctObservedHosts = new WeakSet();
+  function wireContainerObservers() {
+    document.querySelectorAll(VUE_HOST_SELECTOR).forEach((host) => {
+      if (__ctObservedHosts.has(host)) return;
+      __ctObservedHosts.add(host);
+      try {
+        const mo = new MutationObserver(() => {
+          scanCalendarContainers();
+          scanVueInstance();
+        });
+        mo.observe(host, {
+          attributes: true,
+          childList: true,
+          subtree: true,
+          characterData: true,
+        });
+      } catch (_) {}
+    });
+  }
+  // Call frequently during the critical first window too.
+  setInterval(wireContainerObservers, 400);
 
   // ─── Editor guard (narrow) ──────────────────────────────────────────────
   // Only skip inside the GHL builder app itself. Many published GHL funnels
@@ -314,7 +399,7 @@
       });
     } catch (_) {}
   }
-  setInterval(scanInlineScripts, 1500);
+  scanInlineScripts();
 
   function scan(root) {
     root = root || document;
