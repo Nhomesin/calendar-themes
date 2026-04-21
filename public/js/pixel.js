@@ -130,6 +130,32 @@
     }
   }
 
+  // Pull a calendar ID out of whatever attribute GHL happens to use. Over
+  // the years: data-calendar, data-calendar-id, data-widget-id, data-id,
+  // id="<something>-<calendarId>", etc. We collect every attribute whose
+  // value looks like a 24-hex Mongo ObjectId since that's what GHL issues.
+  const MONGO_ID_RE = /[a-f0-9]{20,32}/i;
+  function calendarIdFromElement(el) {
+    const attrs = el.getAttributeNames ? el.getAttributeNames() : [];
+    for (const name of attrs) {
+      const lname = name.toLowerCase();
+      if (
+        lname === 'data-calendar' ||
+        lname === 'data-calendar-id' ||
+        lname === 'data-widget-id' ||
+        lname === 'data-resource' ||
+        lname === 'data-id' ||
+        lname === 'data-embed-id' ||
+        lname === 'id'
+      ) {
+        const v = (el.getAttribute(name) || '').trim();
+        const m = v.match(MONGO_ID_RE);
+        if (m) return m[0];
+      }
+    }
+    return null;
+  }
+
   function scan(root) {
     root = root || document;
     const rootLabel = root === document ? 'document' : (root.tagName || 'node');
@@ -153,13 +179,18 @@
       }
     }
 
-    const divs = root.querySelectorAll
-      ? root.querySelectorAll('div[data-calendar-id], div[data-calendar]')
-      : [];
+    // Broader div-embed detection: any element whose attrs hint at a
+    // calendar (class/id/data-* containing "calendar" or "booking").
+    const q =
+      'div[data-calendar-id], div[data-calendar], div[data-widget-id], ' +
+      'div[data-resource], div[data-embed-id], ' +
+      'div[id*="calendar" i], div[class*="calendar" i], ' +
+      'div[id*="booking" i], div[class*="booking" i]';
+    const divs = root.querySelectorAll ? root.querySelectorAll(q) : [];
     for (let i = 0; i < divs.length; i++) {
       const div = divs[i];
       if (div.dataset.ctPreempted || div.dataset.ctChecked) continue;
-      const id = (div.dataset.calendarId || div.dataset.calendar || '').trim();
+      const id = calendarIdFromElement(div);
       if (id) {
         matched++;
         log('matched div-embed', { id, div });
@@ -174,6 +205,82 @@
       matched,
       skippedIframeSrcs: skippedSrcs.slice(0, 8),
     });
+
+    // If the top-level scan still matched nothing, dump a diagnostic so the
+    // operator can see exactly what GHL's calendar markup actually looks like
+    // on this funnel. Only run once per page.
+    if (root === document && matched === 0 && iframeSeen === 0 && !PIXEL._diagnosed) {
+      PIXEL._diagnosed = true;
+      setTimeout(diagnose, 2500);
+    }
+  }
+
+  // ─── Diagnostic dump ───────────────────────────────────────────────────
+  function diagnose() {
+    try {
+      console.groupCollapsed('[CalTheme Pixel] Diagnostic — no calendar detected');
+
+      const iframes = Array.from(document.querySelectorAll('iframe'));
+      console.log('All iframes (' + iframes.length + '):');
+      iframes.forEach((f, i) => console.log('  [' + i + ']', f.getAttribute('src'), f));
+
+      const ghlScripts = Array.from(document.querySelectorAll('script[src]'))
+        .filter((s) => /msgsndr|leadconnector|gohighlevel|lc-/i.test(s.src));
+      console.log('GHL-ish scripts (' + ghlScripts.length + '):');
+      ghlScripts.forEach((s) => console.log('  ', s.src));
+
+      const byKeyword = (word) => {
+        const re = new RegExp(word, 'i');
+        const out = [];
+        document.querySelectorAll('*').forEach((el) => {
+          if (out.length >= 30) return;
+          const id = el.id || '';
+          const cls = typeof el.className === 'string' ? el.className : '';
+          const attrs = el.getAttributeNames
+            ? el.getAttributeNames().filter((n) => n !== 'id' && n !== 'class')
+            : [];
+          const attrStr = attrs.map((n) => n + '=' + (el.getAttribute(n) || '')).join(' ');
+          if (re.test(id) || re.test(cls) || re.test(attrStr)) {
+            out.push(el);
+          }
+        });
+        return out;
+      };
+
+      const calMatches = byKeyword('calendar');
+      console.log('Elements matching /calendar/i (' + calMatches.length + '):');
+      calMatches.forEach((el) => console.log('  ', el.tagName.toLowerCase(), el));
+
+      const bookMatches = byKeyword('booking');
+      console.log('Elements matching /booking/i (' + bookMatches.length + '):');
+      bookMatches.forEach((el) => console.log('  ', el.tagName.toLowerCase(), el));
+
+      const mongoCarriers = [];
+      document.querySelectorAll('*').forEach((el) => {
+        if (mongoCarriers.length >= 30) return;
+        const attrs = el.getAttributeNames ? el.getAttributeNames() : [];
+        for (const n of attrs) {
+          const v = el.getAttribute(n) || '';
+          if (/^[a-f0-9]{20,32}$/i.test(v) || /^[a-f0-9]{20,32}$/i.test(v.split('-').pop())) {
+            mongoCarriers.push({ el, attr: n, val: v });
+            break;
+          }
+        }
+      });
+      console.log('Elements with Mongo-looking IDs (' + mongoCarriers.length + '):');
+      mongoCarriers.forEach((x) => console.log('  ', x.attr + '=' + x.val, x.el));
+
+      const customEls = new Set();
+      document.querySelectorAll('*').forEach((el) => {
+        if (el.tagName.includes('-')) customEls.add(el.tagName.toLowerCase());
+      });
+      if (customEls.size) console.log('Custom elements:', Array.from(customEls));
+
+      console.log('Tip: share this group with the CalTheme maintainer.');
+      console.groupEnd();
+    } catch (err) {
+      warn('diagnose failed', err);
+    }
   }
 
   // ─── Queue + flush ─────────────────────────────────────────────────────
@@ -456,6 +563,7 @@
   //   window.__calthemePixel.scan()  // force another sweep
   //   window.__calthemePixel.resolved   // cached resolutions
   PIXEL.scan = () => scan(document);
+  PIXEL.diagnose = diagnose;
   PIXEL.resolved = resolved;
   PIXEL.pending = pending;
 
