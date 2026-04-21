@@ -59,9 +59,41 @@
   // GHL's funnel Calendar element doesn't use an iframe — it renders
   // inline via a Vue bundle that calls backend.leadconnectorhq.com or
   // similar, embedding the real calendar_id in the request URL. We tap
-  // fetch + XHR to capture any Mongo-looking ID that flies by.
-  const MONGO_RE = /[a-f0-9]{24}/gi;
+  // fetch + XHR to capture any ID that flies by.
+  //
+  // GHL has at least two calendar-id formats in the wild:
+  //   • 24-char lowercase hex Mongo ObjectId (old)       65daa0f0810c87189e37bb6b
+  //   • ~20-char mixed-case base62 nanoid-style (new)   V5uQ5Pe35AmkPb5dLfYW
+  //
+  // We match both by extracting 18..26-char alphanumeric substrings and
+  // keeping the ones that look like either format.
+  const CANDIDATE_ID_RE = /[A-Za-z0-9]{18,26}/g;
   const GHL_BACKEND_RE = /(leadconnectorhq|msgsndr|gohighlevel)\.com/i;
+
+  function looksLikeGhlId(s) {
+    if (!s) return false;
+    const n = s.length;
+    if (n < 18 || n > 26) return false;
+    // Must contain at least one digit — rules out all-letter hash garbage.
+    if (!/\d/.test(s)) return false;
+    const isMongo = n === 24 && /^[a-f0-9]{24}$/i.test(s);
+    const hasUpper = /[A-Z]/.test(s);
+    // Either a real Mongo ObjectId, or mixed-case (GHL's new nanoid style).
+    return isMongo || hasUpper;
+  }
+
+  function extractIds(str) {
+    if (!str || typeof str !== 'string') return [];
+    const raw = str.match(CANDIDATE_ID_RE) || [];
+    const seen = new Set();
+    const out = [];
+    raw.forEach((s) => {
+      if (seen.has(s)) return;
+      seen.add(s);
+      if (looksLikeGhlId(s)) out.push(s);
+    });
+    return out;
+  }
 
   function recordId(id, source) {
     if (!id || PIXEL.foundIds.has(id)) return;
@@ -76,8 +108,7 @@
       PIXEL.network.push(url);
       if (PIXEL.network.length > 200) PIXEL.network.shift();
       if (!GHL_BACKEND_RE.test(url)) return;
-      const ids = url.match(MONGO_RE);
-      if (ids) ids.forEach((id) => recordId(id, url));
+      extractIds(url).forEach((id) => recordId(id, url));
     } catch (_) {}
   }
 
@@ -141,8 +172,7 @@
           if (!obj) return;
           try {
             const s = JSON.stringify(obj, (k, v) => (typeof v === 'function' ? undefined : v));
-            const ids = s && s.match(MONGO_RE);
-            if (ids) ids.forEach((id) => recordId(id, 'vue-state'));
+            extractIds(s).forEach((id) => recordId(id, 'vue-state'));
           } catch (_) {}
         });
       });
@@ -229,9 +259,8 @@
 
   // Pull a calendar ID out of whatever attribute GHL happens to use. Over
   // the years: data-calendar, data-calendar-id, data-widget-id, data-id,
-  // id="<something>-<calendarId>", etc. We collect every attribute whose
-  // value looks like a 24-hex Mongo ObjectId since that's what GHL issues.
-  const MONGO_ID_RE = /[a-f0-9]{20,32}/i;
+  // id="<something>-<calendarId>", etc. Supports both the old 24-char hex
+  // Mongo ObjectId format and the newer ~20-char base62 nanoid.
   function calendarIdFromElement(el) {
     const attrs = el.getAttributeNames ? el.getAttributeNames() : [];
     for (const name of attrs) {
@@ -246,12 +275,29 @@
         lname === 'id'
       ) {
         const v = (el.getAttribute(name) || '').trim();
-        const m = v.match(MONGO_ID_RE);
-        if (m) return m[0];
+        const ids = extractIds(v);
+        if (ids.length) return ids[0];
       }
     }
     return null;
   }
+
+  // Sweep every inline <script> body once after load — GHL sometimes
+  // bakes the calendar_id into a window.__INITIAL_STATE__ blob or a
+  // static JS const that gets executed before our pixel attaches.
+  function scanInlineScripts() {
+    try {
+      document.querySelectorAll('script:not([src])').forEach((s) => {
+        const txt = s.textContent;
+        if (!txt || txt.length < 30) return;
+        // Only consider payloads that actually mention a calendar keyword,
+        // to keep noise down.
+        if (!/calendar|appointment|booking/i.test(txt)) return;
+        extractIds(txt).forEach((id) => recordId(id, 'inline-script'));
+      });
+    } catch (_) {}
+  }
+  setInterval(scanInlineScripts, 1500);
 
   function scan(root) {
     root = root || document;
@@ -375,33 +421,36 @@
         console.log('--- [' + i + '] ---\n' + html);
       });
 
-      // 4. Mongo-ID hunt across the page: attrs, then inline script content
-      const idRe = /[a-f0-9]{20,32}/gi;
-      const nearCalendarRe = /(calendar[^\s"'}]{0,40}|calendarId["']?\s*[:=]\s*["']?)([a-f0-9]{20,32})/gi;
-
+      // 4. Candidate calendar IDs across the page — both Mongo hex and
+      //    GHL's newer ~20-char base62 nanoid format.
       const attrHits = new Map();
       document.querySelectorAll('*').forEach((el) => {
         const attrs = el.getAttributeNames ? el.getAttributeNames() : [];
         attrs.forEach((n) => {
           const v = el.getAttribute(n) || '';
-          const m = v.match(idRe);
-          if (m) m.forEach((id) => attrHits.set(id, n));
+          extractIds(v).forEach((id) => attrHits.set(id, n));
         });
       });
-      console.log('== Mongo-looking IDs in attributes (' + attrHits.size + ') ==');
+      console.log('== candidate IDs in attributes (' + attrHits.size + ') ==');
       attrHits.forEach((attr, id) => console.log('  ' + id + '  (from @' + attr + ')'));
 
-      const scriptHits = new Map();
-      const scripts = document.querySelectorAll('script:not([src])');
-      scripts.forEach((s) => {
+      const scriptHits = new Set();
+      document.querySelectorAll('script:not([src])').forEach((s) => {
         const txt = s.textContent || '';
-        let m;
-        while ((m = nearCalendarRe.exec(txt)) !== null) {
-          scriptHits.set(m[2], (m[1] || '').slice(0, 60));
-        }
+        if (!/calendar|appointment|booking/i.test(txt)) return;
+        extractIds(txt).forEach((id) => scriptHits.add(id));
       });
-      console.log('== calendar IDs found near "calendar" in inline scripts (' + scriptHits.size + ') ==');
-      scriptHits.forEach((ctx, id) => console.log('  ' + id + '  (near: ' + ctx + ')'));
+      console.log('== candidate IDs in calendar-mentioning inline scripts (' + scriptHits.size + ') ==');
+      scriptHits.forEach((id) => console.log('  ' + id));
+
+      // Fallback: search the whole rendered HTML (one string) for IDs.
+      // Noisy but catches anything the specific passes missed.
+      try {
+        const allHtmlIds = new Set();
+        extractIds(document.documentElement.outerHTML).forEach((id) => allHtmlIds.add(id));
+        console.log('== candidate IDs across the entire document HTML (' + allHtmlIds.size + ') ==');
+        Array.from(allHtmlIds).slice(0, 50).forEach((id) => console.log('  ' + id));
+      } catch (_) {}
 
       // 5. Custom elements (web components)
       const customEls = new Set();
