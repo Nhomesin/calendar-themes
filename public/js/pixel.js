@@ -216,68 +216,113 @@
   }
 
   // ─── Diagnostic dump ───────────────────────────────────────────────────
+  // All output is printed as plain strings so it can be copy/pasted out of
+  // DevTools without losing information (DOM elements don't copy well).
+  function describeEl(el) {
+    const tag = (el.tagName || '').toLowerCase();
+    const id = el.id ? '#' + el.id : '';
+    const cls =
+      typeof el.className === 'string' && el.className
+        ? '.' + el.className.trim().replace(/\s+/g, '.')
+        : '';
+    const attrs = (el.getAttributeNames ? el.getAttributeNames() : [])
+      .filter((n) => n !== 'id' && n !== 'class' && n !== 'style')
+      .map((n) => {
+        let v = el.getAttribute(n) || '';
+        if (v.length > 80) v = v.slice(0, 80) + '…';
+        return n + '="' + v + '"';
+      })
+      .join(' ');
+    return tag + id + cls + (attrs ? ' [' + attrs + ']' : '');
+  }
+
   function diagnose() {
     try {
-      console.groupCollapsed('[CalTheme Pixel] Diagnostic — no calendar detected');
+      console.group('[CalTheme Pixel] Diagnostic dump — copy everything below');
 
+      // 1. All iframes
       const iframes = Array.from(document.querySelectorAll('iframe'));
-      console.log('All iframes (' + iframes.length + '):');
-      iframes.forEach((f, i) => console.log('  [' + i + ']', f.getAttribute('src'), f));
+      console.log('== iframes (' + iframes.length + ') ==');
+      iframes.forEach((f, i) =>
+        console.log('  [' + i + '] src=' + (f.getAttribute('src') || '(none)'))
+      );
 
+      // 2. Scripts pointing at GHL
       const ghlScripts = Array.from(document.querySelectorAll('script[src]'))
         .filter((s) => /msgsndr|leadconnector|gohighlevel|lc-/i.test(s.src));
-      console.log('GHL-ish scripts (' + ghlScripts.length + '):');
-      ghlScripts.forEach((s) => console.log('  ', s.src));
+      console.log('== GHL-ish scripts (' + ghlScripts.length + ') ==');
+      ghlScripts.forEach((s) => console.log('  ' + s.src));
 
-      const byKeyword = (word) => {
-        const re = new RegExp(word, 'i');
-        const out = [];
-        document.querySelectorAll('*').forEach((el) => {
-          if (out.length >= 30) return;
-          const id = el.id || '';
-          const cls = typeof el.className === 'string' ? el.className : '';
-          const attrs = el.getAttributeNames
-            ? el.getAttributeNames().filter((n) => n !== 'id' && n !== 'class')
-            : [];
-          const attrStr = attrs.map((n) => n + '=' + (el.getAttribute(n) || '')).join(' ');
-          if (re.test(id) || re.test(cls) || re.test(attrStr)) {
-            out.push(el);
-          }
-        });
-        return out;
-      };
-
-      const calMatches = byKeyword('calendar');
-      console.log('Elements matching /calendar/i (' + calMatches.length + '):');
-      calMatches.forEach((el) => console.log('  ', el.tagName.toLowerCase(), el));
-
-      const bookMatches = byKeyword('booking');
-      console.log('Elements matching /booking/i (' + bookMatches.length + '):');
-      bookMatches.forEach((el) => console.log('  ', el.tagName.toLowerCase(), el));
-
-      const mongoCarriers = [];
+      // 3. Every element whose id/class/attrs mention "calendar" or "booking"
+      const keywordHits = [];
+      const re = /calendar|booking|appointment/i;
       document.querySelectorAll('*').forEach((el) => {
-        if (mongoCarriers.length >= 30) return;
+        if (keywordHits.length >= 30) return;
+        const id = el.id || '';
+        const cls = typeof el.className === 'string' ? el.className : '';
         const attrs = el.getAttributeNames ? el.getAttributeNames() : [];
-        for (const n of attrs) {
+        const attrStr = attrs.map((n) => n + '=' + (el.getAttribute(n) || '')).join(' ');
+        if (re.test(id) || re.test(cls) || re.test(attrStr)) keywordHits.push(el);
+      });
+      console.log('== elements mentioning /calendar|booking|appointment/ (' + keywordHits.length + ') ==');
+      keywordHits.forEach((el, i) => {
+        console.log('  [' + i + '] ' + describeEl(el));
+      });
+
+      // 3a. First 3 matching elements' full outerHTML (truncated) so we can
+      //     see everything inside: data-*, inline JSON, child markup.
+      console.log('== outerHTML of first 3 matching elements ==');
+      keywordHits.slice(0, 3).forEach((el, i) => {
+        let html = el.outerHTML || '';
+        if (html.length > 1500) html = html.slice(0, 1500) + '\n…[truncated]';
+        console.log('--- [' + i + '] ---\n' + html);
+      });
+
+      // 4. Mongo-ID hunt across the page: attrs, then inline script content
+      const idRe = /[a-f0-9]{20,32}/gi;
+      const nearCalendarRe = /(calendar[^\s"'}]{0,40}|calendarId["']?\s*[:=]\s*["']?)([a-f0-9]{20,32})/gi;
+
+      const attrHits = new Map();
+      document.querySelectorAll('*').forEach((el) => {
+        const attrs = el.getAttributeNames ? el.getAttributeNames() : [];
+        attrs.forEach((n) => {
           const v = el.getAttribute(n) || '';
-          if (/^[a-f0-9]{20,32}$/i.test(v) || /^[a-f0-9]{20,32}$/i.test(v.split('-').pop())) {
-            mongoCarriers.push({ el, attr: n, val: v });
-            break;
-          }
+          const m = v.match(idRe);
+          if (m) m.forEach((id) => attrHits.set(id, n));
+        });
+      });
+      console.log('== Mongo-looking IDs in attributes (' + attrHits.size + ') ==');
+      attrHits.forEach((attr, id) => console.log('  ' + id + '  (from @' + attr + ')'));
+
+      const scriptHits = new Map();
+      const scripts = document.querySelectorAll('script:not([src])');
+      scripts.forEach((s) => {
+        const txt = s.textContent || '';
+        let m;
+        while ((m = nearCalendarRe.exec(txt)) !== null) {
+          scriptHits.set(m[2], (m[1] || '').slice(0, 60));
         }
       });
-      console.log('Elements with Mongo-looking IDs (' + mongoCarriers.length + '):');
-      mongoCarriers.forEach((x) => console.log('  ', x.attr + '=' + x.val, x.el));
+      console.log('== calendar IDs found near "calendar" in inline scripts (' + scriptHits.size + ') ==');
+      scriptHits.forEach((ctx, id) => console.log('  ' + id + '  (near: ' + ctx + ')'));
 
+      // 5. Custom elements (web components)
       const customEls = new Set();
       document.querySelectorAll('*').forEach((el) => {
         if (el.tagName.includes('-')) customEls.add(el.tagName.toLowerCase());
       });
-      if (customEls.size) console.log('Custom elements:', Array.from(customEls));
+      if (customEls.size) console.log('== custom elements ==\n  ' + Array.from(customEls).join(', '));
 
-      console.log('Tip: share this group with the CalTheme maintainer.');
+      // 6. window.* globals that smell like GHL runtime state
+      const hints = [];
+      for (const k in window) {
+        if (hints.length >= 40) break;
+        if (/(ghl|lc|leadconn|msgsndr|calendar|funnel)/i.test(k)) hints.push(k);
+      }
+      console.log('== suspicious window.* keys ==\n  ' + hints.join(', '));
+
       console.groupEnd();
+      console.log('[CalTheme Pixel] diagnose() done. Run window.__calthemePixel.diagnose() to re-run.');
     } catch (err) {
       warn('diagnose failed', err);
     }
