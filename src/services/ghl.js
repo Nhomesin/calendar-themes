@@ -44,9 +44,14 @@ async function getCalendar(accessToken, calendarId) {
 async function listForms(accessToken, locationId) {
   const client = ghlClient(accessToken);
   try {
-    const res = await client.get('/forms/', { params: { locationId } });
-    return res.data?.forms || [];
-  } catch {
+    // GHL caps the page size at 50; 300 covers almost every location.
+    const res = await client.get('/forms/', { params: { locationId, limit: 50, skip: 0 } });
+    const forms = res.data?.forms || [];
+    console.log(`[Forms] list: ${forms.length} forms returned for ${locationId}`);
+    return forms;
+  } catch (err) {
+    const detail = err?.response?.data || err.message;
+    console.warn('[Forms] list error:', detail);
     return [];
   }
 }
@@ -59,9 +64,13 @@ async function getLocationCustomFields(accessToken, locationId, model = 'contact
     const res = await client.get(`/locations/${locationId}/customFields`, {
       params: { model },
     });
-    return res.data?.customFields || [];
+    const fields = res.data?.customFields || [];
+    console.log(`[CustomFields] ${fields.length} ${model} custom fields for ${locationId}`);
+    return fields;
   } catch (err) {
-    console.warn('[CustomFields] Fetch error:', err?.response?.data || err.message);
+    const status = err?.response?.status;
+    const detail = err?.response?.data || err.message;
+    console.warn(`[CustomFields] fetch error (HTTP ${status}):`, detail);
     return [];
   }
 }
@@ -110,28 +119,65 @@ function standardContactFields() {
   ];
 }
 
-// Resolve the fields a calendar's form should render. GHL's public API does
-// NOT expose which custom fields are bound to a particular form, so the best
-// we can do is return the standard contact fields plus every contact-scoped
-// custom field defined on the location. Callers fall back to the theme's
-// configured fields when this returns null.
+// Resolve the fields a calendar's form should render.
+//
+// GHL's public v2 API does NOT expose which custom fields are bound to a
+// specific form (verified 2026-04-21 against the official OpenAPI spec:
+// GET /forms/ returns only { id, name, locationId }; there is no
+// GET /forms/{id}). The best approximation we can build is:
+//   1. Confirm the calendar exists and read its formId.
+//   2. Resolve the form's display name from GET /forms/?locationId=…
+//      so the UI can show "Using form: <name>".
+//   3. Return the standard contact fields plus every contact-scoped custom
+//      field on the location. These all round-trip correctly via
+//      createContact(customFields:[{id,value}]).
+//
+// Returns null when the calendar itself can't be read. Otherwise returns:
+//   { fields: [...], meta: { calendarId, formId, formName, standardCount,
+//                            customFieldCount, source } }
 async function getCalendarFormFields(accessToken, locationId, calendarId) {
   try {
-    // Pull the calendar only to confirm it exists / has a form attached.
-    // formId isn't currently load-bearing (no public endpoint reads a form's
-    // fields) but we keep the call so we return null when the calendar has no
-    // form configured.
     const cal = await getCalendar(accessToken, calendarId);
-    if (!cal) return null;
+    if (!cal) {
+      console.warn(`[CalForm] calendar ${calendarId} not found`);
+      return null;
+    }
+
+    const formId = cal.formId || null;
+    console.log(`[CalForm] calendar ${calendarId} formId=${formId || '(none)'}`);
+
+    // Resolve the form name (best-effort — only for the UI hint).
+    let formName = null;
+    if (formId) {
+      try {
+        const forms = await listForms(accessToken, locationId);
+        const match = forms.find(f => f.id === formId);
+        formName = match?.name || null;
+      } catch { /* non-fatal */ }
+    }
 
     const customs = await getLocationCustomFields(accessToken, locationId, 'contact');
     const customFields = (customs || [])
       .map(normalizeLocationCustomField)
       .filter(Boolean);
 
-    return [...standardContactFields(), ...customFields];
+    const standard = standardContactFields();
+    const fields = [...standard, ...customFields];
+
+    const meta = {
+      calendarId,
+      formId,
+      formName,
+      standardCount: standard.length,
+      customFieldCount: customFields.length,
+      source: 'calendar+location-custom-fields',
+    };
+    console.log(`[CalForm] resolved ${fields.length} fields`, meta);
+    return { fields, meta };
   } catch (err) {
-    console.warn('[CalForm] Fetch error:', err?.response?.data || err.message);
+    const status = err?.response?.status;
+    const detail = err?.response?.data || err.message;
+    console.warn(`[CalForm] fetch error (HTTP ${status}):`, detail);
     return null;
   }
 }

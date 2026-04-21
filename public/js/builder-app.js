@@ -27,6 +27,9 @@
   let drawerSearchQuery = '';
   const drawerCollapsed = new Set();
   let drawerWired = false;
+  // calendarId -> { status: 'loading'|'ok'|'error'|'none', formId, formName, fieldCount }
+  const formInfoByCal = new Map();
+  const formInfoInflight = new Map();
 
   // ── DOM refs ─────────────────────────────────────────────────────────────
   const $ = s => document.querySelector(s);
@@ -600,6 +603,7 @@
 
     const row = document.createElement('div');
     row.className = 'assignment-row';
+    row.dataset.calId = cal.id;
     row.innerHTML = `
       <div class="assignment-row-head">
         <div class="assignment-cal-name">${escHtml(cal.name)}</div>
@@ -610,14 +614,24 @@
           </select>
         </div>
       </div>
+      <div class="assignment-form-meta" data-form-meta="${cal.id}" ${assignment ? '' : 'hidden'}></div>
       ${embedUrl ? renderEmbedShare(embedUrl, cal.name) : ''}
     `;
+
+    if (assignment) {
+      renderCalendarFormMeta(row, cal.id);
+      ensureCalendarFormInfo(cal.id);
+    }
 
     const sel = row.querySelector('select');
     sel.addEventListener('change', async (e) => {
       const themeId = e.target.value;
       if (themeId) {
         await assignTheme(themeId, cal.id, cal.name);
+        // Invalidate + refetch so the meta line reflects the current form.
+        formInfoByCal.delete(cal.id);
+        formInfoInflight.delete(cal.id);
+        ensureCalendarFormInfo(cal.id);
       } else {
         const existing = assignments.find(a => a.calendar_id === cal.id);
         if (existing) await unassignTheme(existing.id);
@@ -629,6 +643,91 @@
     wireShareBlock(row, embedUrl, cal.name);
 
     return row;
+  }
+
+  function ensureCalendarFormInfo(calendarId) {
+    if (!LOC_ID) return;
+    if (formInfoByCal.has(calendarId)) return;
+    if (formInfoInflight.has(calendarId)) return;
+
+    formInfoByCal.set(calendarId, { status: 'loading' });
+    updateFormMetaRow(calendarId);
+
+    const p = fetch(`${BASE_URL}/api/calendars/${LOC_ID}/${calendarId}/form`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (!data || !data.meta) {
+          formInfoByCal.set(calendarId, { status: 'error' });
+        } else if (!data.meta.formId) {
+          formInfoByCal.set(calendarId, { status: 'none', ...data.meta, fieldCount: (data.fields || []).length });
+        } else {
+          formInfoByCal.set(calendarId, {
+            status: 'ok',
+            formId: data.meta.formId,
+            formName: data.meta.formName,
+            fieldCount: (data.fields || []).length,
+            customFieldCount: data.meta.customFieldCount || 0,
+          });
+        }
+      })
+      .catch(() => { formInfoByCal.set(calendarId, { status: 'error' }); })
+      .finally(() => {
+        formInfoInflight.delete(calendarId);
+        updateFormMetaRow(calendarId);
+      });
+
+    formInfoInflight.set(calendarId, p);
+  }
+
+  function updateFormMetaRow(calendarId) {
+    const el = document.querySelector(`[data-form-meta="${calendarId}"]`);
+    if (!el) return;
+    renderCalendarFormMeta(el.closest('.assignment-row'), calendarId);
+  }
+
+  function renderCalendarFormMeta(row, calendarId) {
+    if (!row) return;
+    const el = row.querySelector('[data-form-meta]');
+    if (!el) return;
+
+    const info = formInfoByCal.get(calendarId);
+    if (!info || info.status === 'loading') {
+      el.className = 'assignment-form-meta loading';
+      el.innerHTML = `
+        <svg class="form-meta-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3" opacity=".4"/><path d="M8 2a6 6 0 016 6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        <span>Reading calendar form…</span>
+      `;
+      return;
+    }
+
+    if (info.status === 'error') {
+      el.className = 'assignment-form-meta error';
+      el.innerHTML = `
+        <svg class="form-meta-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 5.5v3.5M8 11v.01" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <span>Couldn't read form — check that the install has forms.readonly + locations/customFields.readonly scopes.</span>
+      `;
+      return;
+    }
+
+    if (info.status === 'none') {
+      el.className = 'assignment-form-meta muted';
+      el.innerHTML = `
+        <svg class="form-meta-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 7h5M5.5 10h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+        <span>No form attached in GHL · falling back to standard fields (${info.fieldCount} total)</span>
+      `;
+      return;
+    }
+
+    // status === 'ok'
+    el.className = 'assignment-form-meta';
+    const label = info.formName ? escHtml(info.formName) : `form ${escHtml(String(info.formId).slice(0, 6))}…`;
+    const customLine = info.customFieldCount
+      ? ` · ${info.customFieldCount} custom field${info.customFieldCount === 1 ? '' : 's'}`
+      : '';
+    el.innerHTML = `
+      <svg class="form-meta-icon" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="3" y="2.5" width="10" height="11" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5.5 6h5M5.5 9h5M5.5 12h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+      <span>Form: <strong>${label}</strong>${customLine}</span>
+    `;
   }
 
   // ── Embed share block ────────────────────────────────────────────────────

@@ -55,7 +55,7 @@
       const res = await fetch(`${baseUrl}/api/calendars/${locationId}/${calendarId}/form`);
       if (!res.ok) return null;
       const data = await res.json();
-      return data && Array.isArray(data.fields) ? data.fields : null;
+      return data && Array.isArray(data.fields) && data.fields.length ? data.fields : null;
     } catch {
       return null;
     }

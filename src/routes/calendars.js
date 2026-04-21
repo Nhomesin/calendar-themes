@@ -23,11 +23,12 @@ router.get('/:locationId', requireLocation, async (req, res) => {
 router.get('/:locationId/:calendarId/form', requireLocation, async (req, res) => {
   try {
     const { locationId, calendarId } = req.params;
-    const fields = await getCalendarFormFields(req.accessToken, locationId, calendarId);
-    res.json({ fields: fields || null });
+    const result = await getCalendarFormFields(req.accessToken, locationId, calendarId);
+    if (!result) return res.json({ fields: null, meta: null });
+    res.json(result);
   } catch (err) {
     console.error('[CalForm] Route error:', err?.response?.data || err.message);
-    res.json({ fields: null });
+    res.json({ fields: null, meta: null });
   }
 });
 
