@@ -13,12 +13,32 @@ const themeRoutes      = require('./routes/themes');
 const calendarRoutes   = require('./routes/calendars');
 const assignmentRoutes = require('./routes/assignments');
 const bookingRoutes    = require('./routes/booking');
+const pixelRoutes      = require('./routes/pixel');
 const { themeQueries, assignmentQueries } = require('./db');
 const { getDefaultConfig } = require('./services/themeDefaults');
 const { presets } = require('./services/presets');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ── Public pixel surface (open CORS) ─────────────────────────────────────────
+// The pixel runs on customer-owned funnel domains (anything), so these
+// endpoints need Access-Control-Allow-Origin: *. They MUST be registered
+// before the credentialed global CORS below — otherwise that middleware
+// handles preflight and drops the ACAO header for non-whitelisted origins.
+const publicPixelCors = cors({
+  origin: '*',
+  credentials: false,
+  methods: ['GET', 'POST', 'OPTIONS'],
+});
+app.options('/api/pixel/*', publicPixelCors);
+app.use('/api/pixel', publicPixelCors, express.json(), pixelRoutes);
+
+app.get('/pixel.js', publicPixelCors, (req, res) => {
+  res.type('application/javascript; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=300, must-revalidate');
+  res.sendFile(path.join(__dirname, '../public/js/pixel.js'));
+});
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({

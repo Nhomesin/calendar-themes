@@ -422,6 +422,7 @@
   function openAssignmentsDrawer() {
     if (!drawerWired) {
       wireDrawerSearch();
+      wirePixelInstallCard();
       drawerWired = true;
     }
     drawerSearchQuery = '';
@@ -468,6 +469,29 @@
         renderAssignmentsDrawer();
       }
     });
+  }
+
+  function wirePixelInstallCard() {
+    const block = $('#pixel-snippet-block');
+    const codeEl = document.querySelector('[data-pixel-code]');
+    const copyBtn = document.querySelector('[data-pixel-copy]');
+    if (!block || !codeEl || !copyBtn) return;
+
+    // Split the closing tag so the surrounding HTML parser doesn't treat
+    // this as a real </script>.
+    const snippet = '<script src="' + BASE_URL + '/pixel.js" async><' + '/script>';
+    codeEl.textContent = snippet;
+
+    copyBtn.onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(snippet);
+        block.classList.add('copied');
+        showToast('Pixel snippet copied', 'ok');
+        setTimeout(() => block.classList.remove('copied'), 1600);
+      } catch (e) {
+        showToast('Copy failed', 'err');
+      }
+    };
   }
 
   function closeAssignmentsDrawer() {

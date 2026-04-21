@@ -2151,6 +2151,67 @@ input[type="range"]::-moz-range-thumb {
   .share-tab { flex: 1; text-align: center; }
 }
 
+/* Install Pixel card — pinned at the top of the assignments drawer */
+
+.pixel-install {
+  padding: 16px 20px 18px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--accent-soft, var(--surface)) 0%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pixel-install-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.pixel-install-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ink);
+  color: var(--paper);
+}
+.pixel-install-icon svg { width: 16px; height: 16px; }
+
+.pixel-install-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.35;
+}
+
+.pixel-install-sub {
+  font-size: 12px;
+  color: var(--ink-muted);
+  line-height: 1.5;
+  margin-top: 2px;
+}
+
+.pixel-steps {
+  list-style: decimal inside;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  line-height: 1.55;
+}
+
+.pixel-steps li strong {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
    Modal
    ═══════════════════════════════════════════════════════════════════════════ */

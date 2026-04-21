@@ -73,6 +73,18 @@
     return Array.isArray(f.fields) && f.fields.length ? f.fields : null;
   }
 
+  // Emit our height to the parent so the pixel (or any iframe host) can
+  // size us correctly. Namespaced message type so we don't collide with
+  // GHL's own height protocol when multiple embeds are on the page.
+  function postHeight() {
+    try {
+      const h = Math.ceil(document.documentElement.scrollHeight || document.body.scrollHeight || 0);
+      if (h > 0 && window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: 'ct-embed-height', height: h }, '*');
+      }
+    } catch (_) { /* ignore */ }
+  }
+
   (async function boot() {
     const ghlFields = await fetchCalendarForm();
     const fields = resolveFormFields(themeConfig, ghlFields);
@@ -86,5 +98,15 @@
       onBook: submitBooking,
     });
     renderer.init();
+
+    // Initial + continuous height reporting.
+    postHeight();
+    window.addEventListener('load', postHeight);
+    try {
+      new ResizeObserver(postHeight).observe(document.body);
+    } catch (_) {
+      // Older browsers fall back to a periodic check.
+      setInterval(postHeight, 500);
+    }
   })();
 })();

@@ -260,6 +260,20 @@ const assignmentQueries = {
     return data || null;
   },
 
+  async getByCalendarIds(ids) {
+    if (!Array.isArray(ids) || ids.length === 0) return [];
+    const { data, error } = await supabase
+      .from('theme_assignments')
+      .select('calendar_id, location_id, themes_v2(config)')
+      .in('calendar_id', ids);
+    throwIfError(error, 'assignments.getByCalendarIds');
+    return (data || []).map((r) => ({
+      calendar_id: r.calendar_id,
+      location_id: r.location_id,
+      primary_color: r.themes_v2?.config?.colors?.primary || '#6C63FF',
+    }));
+  },
+
   async listByTheme(themeId) {
     const { data, error } = await supabase
       .from('theme_assignments')
