@@ -79,17 +79,18 @@
     try {
       const style = document.createElement('style');
       style.id = PRE_HIDE_STYLE_ID;
-      // display:none collapses the container entirely — zero gap, zero
-      // reserved space, no loading indicator. Vue's mount/fetch lifecycle
-      // still fires on display:none nodes, so our network tap can still
-      // capture the calendar_id. On decision we either:
-      //   • unthemed → remove this style, GHL renders as normal
-      //   • themed   → override inline with display:block and inject
-      //                our themed iframe
+      // Collapse to zero height (no visible gap) but keep the element
+      // in-flow and visible to GHL's Vue bundle so mount lifecycle
+      // fires normally. display:none was breaking Vue's render path
+      // on cached reloads — the visitor saw nothing because GHL's
+      // calendar never mounted into the hidden container.
       style.textContent =
-        PRE_HIDE_SELECTORS.join(',') + '{display:none!important}';
+        PRE_HIDE_SELECTORS.join(',') +
+        '{visibility:hidden!important;height:0!important;min-height:0!important;' +
+        'max-height:0!important;overflow:hidden!important;margin:0!important;' +
+        'padding:0!important;border-width:0!important}';
       (document.head || document.documentElement).appendChild(style);
-      log('pre-hide style injected (display:none)');
+      log('pre-hide style injected (collapse)');
     } catch (_) {}
   }
 
@@ -181,11 +182,11 @@
     };
   } catch (_) {}
 
-  // On a cached reload GHL's Vue bundle runs before our <script async>
-  // even parses, so the fetch intercept misses the call. Resource
-  // Timing is our recovery path. PerformanceObserver with
-  // `buffered: true` replays entries captured before we subscribed
-  // AND streams new ones — far faster than polling every 1.5s.
+  // Recovery path when our <script async> loses the race with GHL's
+  // Vue bundle (common on cached reloads). PerformanceObserver with
+  // `buffered: true` replays resource entries recorded before we
+  // subscribed AND streams new ones, so the moment we install the
+  // observer we see every GHL URL the page has already fetched.
   function scanPerformanceResources() {
     try {
       const entries = performance.getEntriesByType
@@ -201,20 +202,16 @@
       const po = new PerformanceObserver((list) => {
         list.getEntries().forEach((e) => inspectUrl(e.name));
       });
-      // buffered:true → get everything recorded so far plus future entries.
       po.observe({ type: 'resource', buffered: true });
     }
   } catch (_) {}
 
-  // Vue component introspection — once GHL's Vue bundle mounts the
-  // calendar, the calendar_id typically lives on the component props.
-  const VUE_HOST_SELECTOR =
-    '#calendarAppointmentBookingMain, #appointment_widgets--revamp, ' +
-    '.c-calendar, div[id^="calendar-kl-"], div[class*="booking-calendar-"]';
-
+  // Vue component introspection — cheap, runs once every 1.5s.
   function scanVueInstance() {
     try {
-      const hosts = document.querySelectorAll(VUE_HOST_SELECTOR);
+      const hosts = document.querySelectorAll(
+        '#calendarAppointmentBookingMain, #appointment_widgets--revamp, .c-calendar, div[id^="calendar-kl-"]'
+      );
       hosts.forEach((el) => {
         const vc =
           el.__vueParentComponent ||
@@ -225,11 +222,8 @@
         const cand = [
           vc.props,
           vc.attrs,
-          vc.ctx,
-          vc.proxy && vc.proxy.$data,
           vc.proxy && vc.proxy.$props,
           vc.$props,
-          vc.$data,
           vc.$options && vc.$options.propsData,
         ];
         cand.forEach((obj) => {
@@ -242,78 +236,7 @@
       });
     } catch (_) {}
   }
-
-  // Direct DOM sweep of any calendar container's descendant attrs +
-  // textContent. Covers cases where the calendar_id is rendered into
-  // an attribute (e.g. `href`, `data-booking-id`) or a nested JSON
-  // blob, without needing Vue internals or network timing.
-  function scanCalendarContainers() {
-    try {
-      const hosts = document.querySelectorAll(VUE_HOST_SELECTOR);
-      hosts.forEach((host) => {
-        // Attributes on the container itself and all descendants.
-        const scanEl = (el) => {
-          const attrs = el.getAttributeNames ? el.getAttributeNames() : [];
-          for (const n of attrs) {
-            const v = el.getAttribute(n) || '';
-            if (v) extractIds(v).forEach((id) => recordId(id, 'dom-attr@' + n));
-          }
-        };
-        scanEl(host);
-        host.querySelectorAll('*').forEach(scanEl);
-        // Text content (catches inline JSON blobs, `calendarId: "..."`).
-        const t = host.textContent;
-        if (t && t.length) {
-          extractIds(t).forEach((id) => recordId(id, 'container-text'));
-        }
-      });
-    } catch (_) {}
-  }
-
-  // Aggressive initial sweep: 250ms for 3 seconds, then 1.5s.
-  let __ctTicks = 0;
-  const __ctFastInterval = setInterval(() => {
-    __ctTicks++;
-    scanPerformanceResources();
-    scanVueInstance();
-    scanCalendarContainers();
-    // scanInlineScripts is defined later in the file; guard for load order.
-    if (typeof scanInlineScripts === 'function') scanInlineScripts();
-    if (__ctTicks >= 12) {
-      clearInterval(__ctFastInterval);
-      setInterval(() => {
-        scanPerformanceResources();
-        scanVueInstance();
-        scanCalendarContainers();
-        if (typeof scanInlineScripts === 'function') scanInlineScripts();
-      }, 1500);
-    }
-  }, 250);
-
-  // MutationObserver on any calendar container we see — fires on every
-  // Vue render/update and lets us re-scan instantly. Attaches lazily
-  // the first time scanCalendarContainers finds a host.
-  const __ctObservedHosts = new WeakSet();
-  function wireContainerObservers() {
-    document.querySelectorAll(VUE_HOST_SELECTOR).forEach((host) => {
-      if (__ctObservedHosts.has(host)) return;
-      __ctObservedHosts.add(host);
-      try {
-        const mo = new MutationObserver(() => {
-          scanCalendarContainers();
-          scanVueInstance();
-        });
-        mo.observe(host, {
-          attributes: true,
-          childList: true,
-          subtree: true,
-          characterData: true,
-        });
-      } catch (_) {}
-    });
-  }
-  // Call frequently during the critical first window too.
-  setInterval(wireContainerObservers, 400);
+  setInterval(scanVueInstance, 1500);
 
   // ─── Editor guard (narrow) ──────────────────────────────────────────────
   // Only skip inside the GHL builder app itself. Many published GHL funnels
@@ -742,8 +665,8 @@
     // to override the pre-hide style we injected at boot.
     const resetStyle =
       'padding:0 !important;margin:0 !important;min-height:0 !important;' +
-      'height:auto !important;max-height:none !important;position:relative;' +
-      'display:block !important;width:100%;' +
+      'height:auto !important;max-height:none !important;overflow:visible !important;' +
+      'border-width:0;position:relative;display:block !important;width:100% !important;' +
       'visibility:visible !important;';
     container.setAttribute('style', resetStyle);
 

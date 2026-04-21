@@ -479,15 +479,21 @@
 
     // Split closing tags so the surrounding HTML parser doesn't treat
     // them as real </style> / </script>. The inline <style> collapses
-    // GHL's stock calendar container to display:none from HTML parse
-    // time — zero reserved space, zero flash. Pixel then either
-    // overrides display to inject a themed iframe or removes the style
-    // entirely to reveal the stock calendar.
+    // GHL's stock calendar container to zero height + visibility:hidden
+    // from HTML parse time — zero visible gap, zero flash, but the
+    // container stays in-flow so Vue's mount lifecycle fires normally
+    // and we can still intercept the calendar_id. The pixel then
+    // either overrides the styles inline to inject a themed iframe, or
+    // removes the style entirely to reveal the stock calendar.
     const SEL =
       '#calendarAppointmentBookingMain,#appointment_widgets--revamp,' +
       '.c-calendar.c-wrapper,div[id^="calendar-kl-"],' +
       'div[class*="booking-calendar-"]';
-    const preHideCss = SEL + '{display:none!important}';
+    const preHideCss =
+      SEL +
+      '{visibility:hidden!important;height:0!important;min-height:0!important;' +
+      'max-height:0!important;overflow:hidden!important;margin:0!important;' +
+      'padding:0!important;border-width:0!important}';
     const snippet =
       '<style>' + preHideCss + '<' + '/style>\n' +
       '<script src="' + BASE_URL + '/pixel.js" async><' + '/script>';
