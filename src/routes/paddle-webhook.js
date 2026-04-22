@@ -1,6 +1,36 @@
 const express = require('express');
+const crypto = require('crypto');
 const paddle = require('../paddle');
 const { supabase } = require('../db');
+
+// Diagnostic: the SDK's unmarshal() returns a generic error for both wrong
+// secret and stale timestamp (>5s). When verification fails, log which one
+// it actually was so misconfigured deploys are obvious in Railway logs.
+function diagnoseSignatureFailure(rawBody, signatureHeader, secret) {
+  try {
+    if (!signatureHeader) return 'no paddle-signature header';
+    const parts = {};
+    for (const p of signatureHeader.split(';')) {
+      const [k, v] = p.split('=');
+      if (k && v) parts[k] = v;
+    }
+    if (!parts.ts || !parts.h1) return `malformed header (${signatureHeader.slice(0, 40)}...)`;
+
+    const ts = parseInt(parts.ts, 10);
+    const ageSeconds = Math.floor(Date.now() / 1000) - ts;
+    const expected = crypto.createHmac('sha256', secret || '').update(`${ts}:${rawBody}`).digest('hex');
+    const hmacMatches = expected === parts.h1;
+
+    const secretInfo = secret ? `set (len=${secret.length}, prefix=${secret.slice(0, 10)})` : 'MISSING';
+    return (
+      `secret=${secretInfo} bodyLen=${rawBody.length} ts=${ts} ageSeconds=${ageSeconds} ` +
+      `hmacMatches=${hmacMatches}` +
+      (hmacMatches ? ' — SDK rejected due to >5s clock skew' : ' — secret/body mismatch')
+    );
+  } catch (err) {
+    return `diagnose error: ${err.message}`;
+  }
+}
 
 const router = express.Router();
 
@@ -202,7 +232,8 @@ router.post('/', express.raw({ type: 'application/json' }), async (req, res) => 
   try {
     event = await paddle.webhooks.unmarshal(rawBody, secret, signature);
   } catch (err) {
-    console.warn(`[Paddle] Signature verification failed: ${err.message}`);
+    const diag = diagnoseSignatureFailure(rawBody, signature, secret);
+    console.warn(`[Paddle] Signature verification failed: ${err.message} [${diag}]`);
     return res.sendStatus(401);
   }
 
