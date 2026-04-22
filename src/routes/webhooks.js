@@ -40,10 +40,4 @@ router.post('/', async (req, res) => {
   res.sendStatus(200);
 });
 
-// Paddle webhook — placeholder endpoint, returns 200 so Paddle treats
-// it as successfully delivered. Real handling to be added later.
-router.post('/paddle', (req, res) => {
-  res.sendStatus(200);
-});
-
 module.exports = router;

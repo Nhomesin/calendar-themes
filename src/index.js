@@ -7,13 +7,14 @@ const path = require('path');
 const fs = require('fs');
 
 const { initDb } = require('./db');
-const oauthRoutes      = require('./routes/oauth');
-const webhookRoutes    = require('./routes/webhooks');
-const themeRoutes      = require('./routes/themes');
-const calendarRoutes   = require('./routes/calendars');
-const assignmentRoutes = require('./routes/assignments');
-const bookingRoutes    = require('./routes/booking');
-const pixelRoutes      = require('./routes/pixel');
+const oauthRoutes        = require('./routes/oauth');
+const webhookRoutes      = require('./routes/webhooks');
+const paddleWebhookRoute = require('./routes/paddle-webhook');
+const themeRoutes        = require('./routes/themes');
+const calendarRoutes     = require('./routes/calendars');
+const assignmentRoutes   = require('./routes/assignments');
+const bookingRoutes      = require('./routes/booking');
+const pixelRoutes        = require('./routes/pixel');
 const { themeQueries, assignmentQueries } = require('./db');
 const { getDefaultConfig } = require('./services/themeDefaults');
 const { presets } = require('./services/presets');
@@ -39,6 +40,12 @@ app.get('/pixel.js', publicPixelCors, (req, res) => {
   res.set('Cache-Control', 'public, max-age=300, must-revalidate');
   res.sendFile(path.join(__dirname, '../public/js/pixel.js'));
 });
+
+// ── Paddle webhook ───────────────────────────────────────────────────────────
+// MUST be mounted before the global express.json() below. The route uses
+// express.raw() internally so the SDK can verify the HMAC against the
+// exact bytes Paddle sent — any JSON parser upstream corrupts that.
+app.use('/webhooks/paddle', paddleWebhookRoute);
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(cors({
