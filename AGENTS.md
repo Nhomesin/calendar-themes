@@ -2,6 +2,13 @@
 
 Work in a dedicated branch or worktree and preserve unrelated changes. Read the repository's setup and applicable operational procedures before running commands. Keep credentials, private records and generated build output out of commits.
 
+## Writing to Nik
+
+When writing to Nik, use plain English at a grade 8 reading level or lower.
+Use short sentences and common words. Lead with the answer. Explain technical
+terms when needed. When asking a question, clearly state what you need, why
+it matters, and which option you recommend.
+
 ## Repository navigation
 
 CalTheme: GHL calendar themes, booking embeds, OAuth and Paddle billing, served by Express with Supabase storage.
